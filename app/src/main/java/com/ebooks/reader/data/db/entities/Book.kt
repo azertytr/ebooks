@@ -14,7 +14,7 @@ enum class FileType(val extension: String, val mimeType: String) {
 
     companion object {
         fun fromExtension(ext: String): FileType? =
-            values().find { it.extension.equals(ext, ignoreCase = true) }
+            entries.find { it.extension.equals(ext, ignoreCase = true) }
     }
 }
 

@@ -31,7 +31,6 @@ import com.ebooks.reader.ui.components.ReaderSettingsSheet
 import com.ebooks.reader.viewmodel.ReaderThemeOption
 import com.ebooks.reader.viewmodel.ReaderViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
     bookId: String,
@@ -43,34 +42,34 @@ fun ReaderScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
 
-    val themeColors = remember(uiState.settings.themeOption) {
+    val bgColor = remember(uiState.settings.themeOption) {
         when (uiState.settings.themeOption) {
-            ReaderThemeOption.LIGHT -> Pair(Color.White, Color(0xFF222222))
-            ReaderThemeOption.DARK -> Pair(Color(0xFF1a1a2e), Color(0xFFe0e0e0))
-            ReaderThemeOption.SEPIA -> Pair(Color(0xFFF3EAD3), Color(0xFF3b2f1e))
-            ReaderThemeOption.NIGHT -> Pair(Color(0xFF0d0d0d), Color(0xFFaaaaaa))
+            ReaderThemeOption.LIGHT -> Color.White
+            ReaderThemeOption.DARK -> Color(0xFF1a1a2e)
+            ReaderThemeOption.SEPIA -> Color(0xFFF3EAD3)
+            ReaderThemeOption.NIGHT -> Color(0xFF0d0d0d)
         }
     }
-    val (bgColor, _) = themeColors
 
     Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
         when {
-            uiState.error != null -> {
-                ErrorScreen(message = uiState.error!!, onBack = onBack)
-            }
+            uiState.error != null -> ErrorScreen(message = uiState.error!!, onBack = onBack)
             uiState.book == null -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
             else -> {
-                // ── WebView Reader ─────────────────────────────────────────────
                 Box(modifier = Modifier.fillMaxSize()) {
                     EpubWebView(
                         html = uiState.currentChapterHtml,
-                        isLoading = uiState.isChapterLoading,
-                        bgColor = bgColor,
-                        onScrollChanged = { pos -> viewModel.saveProgress(pos) },
+                        bgColorHex = when (uiState.settings.themeOption) {
+                            ReaderThemeOption.LIGHT -> "#FFFFFF"
+                            ReaderThemeOption.DARK -> "#1a1a2e"
+                            ReaderThemeOption.SEPIA -> "#F3EAD3"
+                            ReaderThemeOption.NIGHT -> "#0d0d0d"
+                        },
+                        onScrollChanged = viewModel::saveProgress,
                         onCenterTap = { viewModel.toggleControls() },
                         onSwipeLeft = { viewModel.nextChapter() },
                         onSwipeRight = { viewModel.previousChapter() },
@@ -78,16 +77,10 @@ fun ReaderScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Chapter loading indicator
                     if (uiState.isChapterLoading) {
-                        LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.TopStart)
-                        )
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopStart))
                     }
 
-                    // ── Top Bar ────────────────────────────────────────────────
                     AnimatedVisibility(
                         visible = uiState.showControls,
                         enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
@@ -100,12 +93,10 @@ fun ReaderScreen(
                             onBack = onBack,
                             onChapters = { viewModel.toggleChapterPanel() },
                             onBookmark = { viewModel.addBookmark() },
-                            onSearch = { /* TODO: in-book search */ },
                             onSettings = { viewModel.toggleSettingsPanel() }
                         )
                     }
 
-                    // ── Bottom Bar ─────────────────────────────────────────────
                     AnimatedVisibility(
                         visible = uiState.showControls,
                         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -124,7 +115,6 @@ fun ReaderScreen(
                         )
                     }
 
-                    // ── Chapter Panel (side drawer) ────────────────────────────
                     AnimatedVisibility(
                         visible = uiState.showChapterPanel,
                         enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
@@ -143,7 +133,6 @@ fun ReaderScreen(
                     }
                 }
 
-                // ── Settings Sheet ─────────────────────────────────────────────
                 if (uiState.showSettingsPanel) {
                     ReaderSettingsSheet(
                         settings = uiState.settings,
@@ -160,8 +149,7 @@ fun ReaderScreen(
 @Composable
 private fun EpubWebView(
     html: String?,
-    isLoading: Boolean,
-    bgColor: Color,
+    bgColorHex: String,
     onScrollChanged: (Int) -> Unit,
     onCenterTap: () -> Unit,
     onSwipeLeft: () -> Unit,
@@ -169,8 +157,6 @@ private fun EpubWebView(
     webViewRef: MutableState<WebView?>,
     modifier: Modifier = Modifier
 ) {
-    var swipeStartX by remember { mutableFloatStateOf(0f) }
-
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
@@ -184,21 +170,16 @@ private fun EpubWebView(
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
                 isVerticalScrollBarEnabled = false
-                isHorizontalScrollBarEnabled = false
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String) {
                         super.onPageFinished(view, url)
-                        // Inject scroll tracking JS
                         view.evaluateJavascript("""
                             (function() {
-                                var lastScroll = 0;
+                                var last = 0;
                                 window.addEventListener('scroll', function() {
                                     var y = Math.round(window.scrollY);
-                                    if (Math.abs(y - lastScroll) > 50) {
-                                        lastScroll = y;
-                                        Android.onScroll(y);
-                                    }
+                                    if (Math.abs(y - last) > 50) { last = y; Android.onScroll(y); }
                                 }, { passive: true });
                             })();
                         """.trimIndent(), null)
@@ -206,8 +187,7 @@ private fun EpubWebView(
                 }
 
                 addJavascriptInterface(object {
-                    @JavascriptInterface
-                    fun onScroll(position: Int) { onScrollChanged(position) }
+                    @JavascriptInterface fun onScroll(position: Int) { onScrollChanged(position) }
                 }, "Android")
 
                 webViewRef.value = this
@@ -215,168 +195,69 @@ private fun EpubWebView(
         },
         update = { webView ->
             if (html != null) {
-                val bgHex = String.format("#%06X", 0xFFFFFF and bgColor.hashCode())
-                webView.setBackgroundColor(
-                    android.graphics.Color.parseColor(
-                        when (bgColor) {
-                            Color.White -> "#FFFFFF"
-                            Color(0xFF1a1a2e) -> "#1a1a2e"
-                            Color(0xFFF3EAD3) -> "#F3EAD3"
-                            Color(0xFF0d0d0d) -> "#0d0d0d"
-                            else -> "#FFFFFF"
-                        }
-                    )
-                )
-                webView.loadDataWithBaseURL(
-                    "file:///android_asset/",
-                    html,
-                    "text/html",
-                    "UTF-8",
-                    null
-                )
+                try {
+                    webView.setBackgroundColor(android.graphics.Color.parseColor(bgColorHex))
+                } catch (_: Exception) {}
+                webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
             }
         },
-        modifier = modifier
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { offset ->
-                        val w = size.width
-                        when {
-                            offset.x < w * 0.25f -> onSwipeRight()
-                            offset.x > w * 0.75f -> onSwipeLeft()
-                            else -> onCenterTap()
-                        }
+        modifier = modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onTap = { offset ->
+                    val w = size.width
+                    when {
+                        offset.x < w * 0.25f -> onSwipeRight()
+                        offset.x > w * 0.75f -> onSwipeLeft()
+                        else -> onCenterTap()
                     }
-                )
-            }
+                }
+            )
+        }
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderTopBar(
-    title: String,
-    chapterTitle: String,
-    onBack: () -> Unit,
-    onChapters: () -> Unit,
-    onBookmark: () -> Unit,
-    onSearch: () -> Unit,
-    onSettings: () -> Unit
-) {
+private fun ReaderTopBar(title: String, chapterTitle: String, onBack: () -> Unit, onChapters: () -> Unit, onBookmark: () -> Unit, onSettings: () -> Unit) {
     TopAppBar(
         title = {
             Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (chapterTitle.isNotBlank()) {
-                    Text(
-                        text = chapterTitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Text(chapterTitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         },
-        navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-        },
+        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
         actions = {
-            IconButton(onClick = onChapters) {
-                Icon(Icons.Default.List, contentDescription = "Chapters")
-            }
-            IconButton(onClick = onBookmark) {
-                Icon(Icons.Default.BookmarkAdd, contentDescription = "Add bookmark")
-            }
-            IconButton(onClick = onSettings) {
-                Icon(Icons.Default.TextFormat, contentDescription = "Settings")
-            }
+            IconButton(onClick = onChapters) { Icon(Icons.Default.List, "Chapters") }
+            IconButton(onClick = onBookmark) { Icon(Icons.Default.BookmarkAdd, "Add bookmark") }
+            IconButton(onClick = onSettings) { Icon(Icons.Default.TextFormat, "Settings") }
         },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-        )
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
     )
 }
 
 @Composable
-private fun ReaderBottomBar(
-    currentChapter: Int,
-    totalChapters: Int,
-    onPrevChapter: () -> Unit,
-    onNextChapter: () -> Unit,
-    onFontDecrease: () -> Unit,
-    onFontIncrease: () -> Unit,
-    onAutoScroll: () -> Unit,
-    isAutoScrolling: Boolean
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        tonalElevation = 8.dp,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-    ) {
+private fun ReaderBottomBar(currentChapter: Int, totalChapters: Int, onPrevChapter: () -> Unit, onNextChapter: () -> Unit, onFontDecrease: () -> Unit, onFontIncrease: () -> Unit, onAutoScroll: () -> Unit, isAutoScrolling: Boolean) {
+    Surface(modifier = Modifier.fillMaxWidth(), tonalElevation = 8.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)) {
         Column {
-            // Chapter progress
             if (totalChapters > 0) {
-                LinearProgressIndicator(
-                    progress = { (currentChapter + 1).toFloat() / totalChapters },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                LinearProgressIndicator(progress = { (currentChapter + 1).toFloat() / totalChapters }, modifier = Modifier.fillMaxWidth())
             }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Previous chapter
-                IconButton(onClick = onPrevChapter, enabled = currentChapter > 0) {
-                    Icon(Icons.Default.NavigateBefore, contentDescription = "Previous chapter")
-                }
-
-                // Chapter info
-                Text(
-                    text = if (totalChapters > 0) "${currentChapter + 1} / $totalChapters" else "",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Font size decrease
-                IconButton(onClick = onFontDecrease) {
-                    Icon(Icons.Default.TextDecrease, contentDescription = "Decrease font size")
-                }
-
-                // Auto-scroll toggle
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onPrevChapter, enabled = currentChapter > 0) { Icon(Icons.Default.NavigateBefore, "Previous") }
+                Text(if (totalChapters > 0) "${currentChapter + 1} / $totalChapters" else "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = onFontDecrease) { Icon(Icons.Default.Remove, "Smaller font") }
                 IconButton(onClick = onAutoScroll) {
                     Icon(
-                        if (isAutoScrolling) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
-                        contentDescription = if (isAutoScrolling) "Stop auto-scroll" else "Start auto-scroll",
-                        tint = if (isAutoScrolling) MaterialTheme.colorScheme.primary
-                               else MaterialTheme.colorScheme.onSurface
+                        if (isAutoScrolling) Icons.Default.PauseCircleOutline else Icons.Default.PlayCircleOutline,
+                        if (isAutoScrolling) "Stop auto-scroll" else "Auto-scroll",
+                        tint = if (isAutoScrolling) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                 }
-
-                // Font size increase
-                IconButton(onClick = onFontIncrease) {
-                    Icon(Icons.Default.TextIncrease, contentDescription = "Increase font size")
-                }
-
-                // Next chapter
-                IconButton(
-                    onClick = onNextChapter,
-                    enabled = totalChapters == 0 || currentChapter < totalChapters - 1
-                ) {
-                    Icon(Icons.Default.NavigateNext, contentDescription = "Next chapter")
-                }
+                IconButton(onClick = onFontIncrease) { Icon(Icons.Default.Add, "Larger font") }
+                IconButton(onClick = onNextChapter, enabled = totalChapters == 0 || currentChapter < totalChapters - 1) { Icon(Icons.Default.NavigateNext, "Next") }
             }
         }
     }
@@ -384,13 +265,8 @@ private fun ReaderBottomBar(
 
 @Composable
 private fun ErrorScreen(message: String, onBack: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.ErrorOutline, contentDescription = null,
-            modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
+    Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(Icons.Default.ErrorOutline, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
         Spacer(modifier = Modifier.height(16.dp))
         Text("Cannot open book", style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(8.dp))
@@ -400,21 +276,10 @@ private fun ErrorScreen(message: String, onBack: () -> Unit) {
     }
 }
 
-// ── ViewModel Factory ─────────────────────────────────────────────────────────
-
-class ReaderViewModelFactory(
-    private val context: android.content.Context,
-    private val bookId: String
-) : androidx.lifecycle.ViewModelProvider.Factory {
-    override fun <T : androidx.lifecycle.ViewModel> create(
-        modelClass: Class<T>,
-        extras: androidx.lifecycle.viewmodel.CreationExtras
-    ): T {
+class ReaderViewModelFactory(private val context: android.content.Context, private val bookId: String) : androidx.lifecycle.ViewModelProvider.Factory {
+    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>, extras: androidx.lifecycle.viewmodel.CreationExtras): T {
         val handle = SavedStateHandle(mapOf("bookId" to bookId))
         @Suppress("UNCHECKED_CAST")
-        return ReaderViewModel(
-            context.applicationContext as android.app.Application,
-            handle
-        ) as T
+        return ReaderViewModel(context.applicationContext as android.app.Application, handle) as T
     }
 }

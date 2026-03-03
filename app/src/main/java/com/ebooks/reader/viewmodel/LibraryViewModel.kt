@@ -45,28 +45,35 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _searchQuery = MutableStateFlow("")
     private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
 
+    // Group flows to stay within the 5-parameter typed combine() overload
+    private val booksWithSort = _sortOrder.flatMapLatest { sort ->
+        getBooksFlow(sort).map { books -> Pair(sort, books) }
+    }
+    private val filterParams = combine(_filterStatus, _filterFileType, _viewMode, _searchQuery) {
+            status, fileType, viewMode, query -> arrayOf<Any?>(status, fileType, viewMode, query)
+    }
+
     val uiState: StateFlow<LibraryUiState> = combine(
-        _sortOrder.flatMapLatest { sort -> getBooksFlow(sort) },
-        _sortOrder,
-        _filterStatus,
-        _filterFileType,
-        _viewMode,
-        _searchQuery,
+        booksWithSort,
+        filterParams,
         _importState
-    ) { booksArray, sort, status, fileType, mode, query, importState ->
+    ) { (sort, books), fp, importState ->
         @Suppress("UNCHECKED_CAST")
-        val allBooks = booksArray as List<Book>
-        val filtered = allBooks
-            .filter { book ->
-                (status == null || book.readingStatus == status) &&
-                (fileType == null || book.fileType == fileType) &&
-                (query.isBlank() || book.title.contains(query, ignoreCase = true) ||
-                 book.author.contains(query, ignoreCase = true))
-            }
+        val status   = fp[0] as ReadingStatus?
+        val fileType = fp[1] as String?
+        val viewMode = fp[2] as ViewMode
+        val query    = fp[3] as String
+
+        val filtered = books.filter { book ->
+            (status == null || book.readingStatus == status) &&
+            (fileType == null || book.fileType == fileType) &&
+            (query.isBlank() || book.title.contains(query, ignoreCase = true) ||
+             book.author.contains(query, ignoreCase = true))
+        }
         LibraryUiState(
             books = filtered,
             sortOrder = sort,
-            viewMode = mode,
+            viewMode = viewMode,
             filterStatus = status,
             filterFileType = fileType,
             searchQuery = query,
