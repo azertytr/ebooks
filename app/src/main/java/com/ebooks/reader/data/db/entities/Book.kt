@@ -1,6 +1,7 @@
 package com.ebooks.reader.data.db.entities
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class ReadingStatus { UNREAD, READING, READ }
@@ -18,7 +19,7 @@ enum class FileType(val extension: String, val mimeType: String) {
     }
 }
 
-@Entity(tableName = "books", indices = [androidx.room.Index(value = ["filePath"], unique = true)])
+@Entity(tableName = "books", indices = [Index(value = ["filePath"], unique = true)])
 data class Book(
     @PrimaryKey val id: String,
     val title: String,
