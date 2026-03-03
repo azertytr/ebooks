@@ -18,7 +18,7 @@ enum class FileType(val extension: String, val mimeType: String) {
     }
 }
 
-@Entity(tableName = "books")
+@Entity(tableName = "books", indices = [androidx.room.Index(value = ["filePath"], unique = true)])
 data class Book(
     @PrimaryKey val id: String,
     val title: String,

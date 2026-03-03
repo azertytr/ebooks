@@ -5,6 +5,7 @@ import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.ebooks.reader.BuildConfig
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -160,12 +161,14 @@ private fun EpubWebView(
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
+                WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
                     builtInZoomControls = false
                     displayZoomControls = false
                     textZoom = 100
+                    mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 }
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY

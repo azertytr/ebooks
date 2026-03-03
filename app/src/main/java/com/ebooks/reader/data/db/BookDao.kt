@@ -48,6 +48,14 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id = :bookId")
     suspend fun deleteBookById(bookId: String)
 
+    @Query("UPDATE books SET readingStatus = :status WHERE id = :bookId")
+    suspend fun updateReadingStatus(bookId: String, status: ReadingStatus)
+
+    @Query("""UPDATE books SET lastReadAt = :time,
+              readingStatus = CASE WHEN readingStatus = 'UNREAD' THEN 'READING' ELSE readingStatus END
+              WHERE id = :bookId""")
+    suspend fun updateLastRead(bookId: String, time: Long)
+
     // ── Reading Progress ──────────────────────────────────────────────────────
 
     @Query("SELECT * FROM reading_progress WHERE bookId = :bookId")
