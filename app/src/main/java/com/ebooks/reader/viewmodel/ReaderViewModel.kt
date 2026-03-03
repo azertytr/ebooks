@@ -1,0 +1,304 @@
+package com.ebooks.reader.viewmodel
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
+import com.ebooks.reader.data.db.entities.Book
+import com.ebooks.reader.data.db.entities.Bookmark
+import com.ebooks.reader.data.db.entities.ReadingProgress
+import com.ebooks.reader.data.db.entities.ReadingStatus
+import com.ebooks.reader.data.parser.EpubBook
+import com.ebooks.reader.data.parser.EpubChapter
+import com.ebooks.reader.data.parser.ReaderTheme
+import com.ebooks.reader.data.repository.BookRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+enum class ReaderThemeOption { LIGHT, DARK, SEPIA, NIGHT }
+enum class FontFamily(val css: String, val displayName: String) {
+    SERIF("Georgia, serif", "Georgia"),
+    SANS_SERIF("'Roboto', sans-serif", "Roboto"),
+    MONO("'Courier New', monospace", "Mono"),
+    OPENTYPE("'OpenDyslexic', serif", "Dyslexic");
+}
+
+data class ReaderSettings(
+    val themeOption: ReaderThemeOption = ReaderThemeOption.LIGHT,
+    val fontSize: Int = 18,
+    val lineHeight: Float = 1.6f,
+    val fontFamily: FontFamily = FontFamily.SERIF,
+    val paragraphIndent: Boolean = false,
+    val brightness: Float = -1f,  // -1 = system
+    val autoScrollSpeed: Int = 0, // 0 = off, 1-10 speed
+    val keepScreenOn: Boolean = false,
+    val isFullscreen: Boolean = false
+)
+
+data class ReaderUiState(
+    val book: Book? = null,
+    val epubBook: EpubBook? = null,
+    val chapters: List<EpubChapter> = emptyList(),
+    val currentChapterIndex: Int = 0,
+    val currentChapterHtml: String? = null,
+    val isChapterLoading: Boolean = false,
+    val bookmarks: List<Bookmark> = emptyList(),
+    val showControls: Boolean = true,
+    val showChapterPanel: Boolean = false,
+    val showSettingsPanel: Boolean = false,
+    val showBookmarksPanel: Boolean = false,
+    val settings: ReaderSettings = ReaderSettings(),
+    val error: String? = null
+)
+
+class ReaderViewModel(
+    application: Application,
+    savedStateHandle: SavedStateHandle
+) : AndroidViewModel(application) {
+
+    private val repository = BookRepository(application)
+    private val bookId: String = savedStateHandle["bookId"] ?: ""
+
+    private val _uiState = MutableStateFlow(ReaderUiState())
+    val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
+
+    private var progressSaveJob: Job? = null
+    private var autoScrollJob: Job? = null
+
+    init {
+        if (bookId.isNotBlank()) {
+            loadBook()
+        }
+    }
+
+    private fun loadBook() {
+        viewModelScope.launch {
+            val book = repository.getBookById(bookId) ?: run {
+                _uiState.update { it.copy(error = "Book not found") }
+                return@launch
+            }
+            val epubBook = repository.parseEpubBook(bookId)
+            val progress = repository.getReadingProgress(bookId)
+
+            _uiState.update { state ->
+                state.copy(
+                    book = book,
+                    epubBook = epubBook,
+                    chapters = epubBook?.chapters ?: emptyList(),
+                    currentChapterIndex = progress?.chapterIndex ?: 0
+                )
+            }
+
+            repository.updateLastRead(bookId)
+
+            // Load bookmarks
+            repository.getBookmarks(bookId).collect { bookmarks ->
+                _uiState.update { it.copy(bookmarks = bookmarks) }
+            }
+        }
+
+        viewModelScope.launch {
+            val chapters = _uiState.value.chapters
+            if (chapters.isNotEmpty()) {
+                loadChapter(_uiState.value.currentChapterIndex)
+            }
+        }
+    }
+
+    fun loadChapter(index: Int) {
+        val chapters = _uiState.value.chapters
+        if (index < 0 || index >= chapters.size) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isChapterLoading = true, currentChapterIndex = index) }
+            val chapter = chapters[index]
+            val theme = buildReaderTheme()
+            val html = repository.getChapterHtml(bookId, chapter.href, theme)
+            _uiState.update { it.copy(
+                currentChapterHtml = html,
+                isChapterLoading = false,
+                showChapterPanel = false
+            )}
+        }
+    }
+
+    fun nextChapter() {
+        val current = _uiState.value.currentChapterIndex
+        val total = _uiState.value.chapters.size
+        if (current < total - 1) loadChapter(current + 1)
+    }
+
+    fun previousChapter() {
+        val current = _uiState.value.currentChapterIndex
+        if (current > 0) loadChapter(current - 1)
+    }
+
+    // ── Controls Visibility ───────────────────────────────────────────────────
+
+    fun toggleControls() {
+        _uiState.update { it.copy(showControls = !it.showControls) }
+    }
+
+    fun toggleChapterPanel() {
+        _uiState.update { it.copy(
+            showChapterPanel = !it.showChapterPanel,
+            showSettingsPanel = false,
+            showBookmarksPanel = false
+        )}
+    }
+
+    fun toggleSettingsPanel() {
+        _uiState.update { it.copy(
+            showSettingsPanel = !it.showSettingsPanel,
+            showChapterPanel = false,
+            showBookmarksPanel = false
+        )}
+    }
+
+    fun toggleBookmarksPanel() {
+        _uiState.update { it.copy(
+            showBookmarksPanel = !it.showBookmarksPanel,
+            showChapterPanel = false,
+            showSettingsPanel = false
+        )}
+    }
+
+    fun closeAllPanels() {
+        _uiState.update { it.copy(
+            showChapterPanel = false,
+            showSettingsPanel = false,
+            showBookmarksPanel = false
+        )}
+    }
+
+    // ── Settings ──────────────────────────────────────────────────────────────
+
+    fun updateSettings(settings: ReaderSettings) {
+        _uiState.update { it.copy(settings = settings) }
+        // Reload chapter with new theme
+        loadChapter(_uiState.value.currentChapterIndex)
+    }
+
+    fun setTheme(theme: ReaderThemeOption) {
+        updateSettings(_uiState.value.settings.copy(themeOption = theme))
+    }
+
+    fun setFontSize(size: Int) {
+        updateSettings(_uiState.value.settings.copy(fontSize = size.coerceIn(12, 32)))
+    }
+
+    fun increaseFontSize() = setFontSize(_uiState.value.settings.fontSize + 2)
+    fun decreaseFontSize() = setFontSize(_uiState.value.settings.fontSize - 2)
+
+    fun setFontFamily(family: FontFamily) {
+        updateSettings(_uiState.value.settings.copy(fontFamily = family))
+    }
+
+    fun setLineHeight(height: Float) {
+        updateSettings(_uiState.value.settings.copy(lineHeight = height.coerceIn(1.0f, 3.0f)))
+    }
+
+    fun toggleAutoScroll() {
+        val current = _uiState.value.settings.autoScrollSpeed
+        val newSpeed = if (current > 0) 0 else 3
+        updateSettings(_uiState.value.settings.copy(autoScrollSpeed = newSpeed))
+        if (newSpeed > 0) startAutoScroll() else stopAutoScroll()
+    }
+
+    fun setAutoScrollSpeed(speed: Int) {
+        _uiState.update { it.copy(settings = it.settings.copy(autoScrollSpeed = speed)) }
+    }
+
+    private fun startAutoScroll() {
+        autoScrollJob?.cancel()
+        autoScrollJob = viewModelScope.launch {
+            while (true) {
+                delay(50)
+                // Signal WebView to scroll — handled via JS bridge in the UI layer
+            }
+        }
+    }
+
+    private fun stopAutoScroll() {
+        autoScrollJob?.cancel()
+        autoScrollJob = null
+    }
+
+    // ── Bookmarks ─────────────────────────────────────────────────────────────
+
+    fun addBookmark(scrollPosition: Int = 0, selectedText: String? = null) {
+        val state = _uiState.value
+        val chapter = state.chapters.getOrNull(state.currentChapterIndex) ?: return
+        viewModelScope.launch {
+            val bookmark = Bookmark(
+                id = UUID.randomUUID().toString(),
+                bookId = bookId,
+                chapterIndex = state.currentChapterIndex,
+                chapterHref = chapter.href,
+                position = scrollPosition,
+                selectedText = selectedText
+            )
+            repository.addBookmark(bookmark)
+        }
+    }
+
+    fun deleteBookmark(bookmark: Bookmark) {
+        viewModelScope.launch { repository.deleteBookmark(bookmark) }
+    }
+
+    fun navigateToBookmark(bookmark: Bookmark) {
+        if (bookmark.chapterIndex != _uiState.value.currentChapterIndex) {
+            loadChapter(bookmark.chapterIndex)
+        }
+        // Scroll position handled by WebView
+    }
+
+    // ── Progress Saving ───────────────────────────────────────────────────────
+
+    fun saveProgress(scrollPosition: Int) {
+        progressSaveJob?.cancel()
+        progressSaveJob = viewModelScope.launch {
+            delay(1000) // Debounce
+            val state = _uiState.value
+            repository.saveReadingProgress(
+                ReadingProgress(
+                    bookId = bookId,
+                    chapterIndex = state.currentChapterIndex,
+                    chapterHref = state.chapters.getOrNull(state.currentChapterIndex)?.href ?: "",
+                    scrollPosition = scrollPosition
+                )
+            )
+            // Update book status if we're in the last chapter
+            val isLastChapter = state.currentChapterIndex == state.chapters.size - 1
+            if (isLastChapter) {
+                repository.updateReadingStatus(bookId, ReadingStatus.READ)
+            }
+        }
+    }
+
+    // ── Theme Building ────────────────────────────────────────────────────────
+
+    private fun buildReaderTheme(): ReaderTheme {
+        val settings = _uiState.value.settings
+        val base = when (settings.themeOption) {
+            ReaderThemeOption.LIGHT -> ReaderTheme.LIGHT
+            ReaderThemeOption.DARK -> ReaderTheme.DARK
+            ReaderThemeOption.SEPIA -> ReaderTheme.SEPIA
+            ReaderThemeOption.NIGHT -> ReaderTheme.NIGHT
+        }
+        return base.copy(
+            fontSize = settings.fontSize,
+            lineHeight = settings.lineHeight,
+            fontFamily = settings.fontFamily.css,
+            paragraphIndent = settings.paragraphIndent
+        )
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopAutoScroll()
+    }
+}

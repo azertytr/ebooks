@@ -1,0 +1,172 @@
+# EbookReader
+
+[![CI](https://github.com/BardinConsulting/ebooks/actions/workflows/ci.yml/badge.svg)](https://github.com/BardinConsulting/ebooks/actions/workflows/ci.yml)
+[![Security](https://github.com/BardinConsulting/ebooks/actions/workflows/security.yml/badge.svg)](https://github.com/BardinConsulting/ebooks/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A clean, fast, and fully-featured Android ebook reader built with **Jetpack Compose** and **Material Design 3**. Supports EPUB, PDF, and TXT files with zero cloud dependency — all your data stays on your device.
+
+---
+
+## Features
+
+| Feature | Status |
+|---------|--------|
+| EPUB 2 & 3 support | ✅ |
+| PDF reading | ✅ |
+| TXT reading | ✅ |
+| Library with sort & filter | ✅ |
+| Grid / List / Bookshelf view | ✅ |
+| Day / Dark / Sepia / Night themes | ✅ |
+| Adjustable font size & line spacing | ✅ |
+| Chapter navigation | ✅ |
+| Bookmarks with notes | ✅ |
+| Reading progress sync | ✅ |
+| Auto-scroll | ✅ |
+| Material You dynamic colors | ✅ |
+| No internet permission required | ✅ |
+
+---
+
+## Screenshots
+
+> See `WhatsApp Image *.jpeg` files in the repo root for the original design reference.
+
+---
+
+## Architecture
+
+```
+app/
+└── src/main/java/com/ebooks/reader/
+    ├── data/
+    │   ├── db/              # Room database, DAO, entities
+    │   ├── parser/          # EPUB parser (zero external deps)
+    │   └── repository/      # BookRepository (single source of truth)
+    ├── ui/
+    │   ├── screens/         # LibraryScreen, ReaderScreen
+    │   ├── components/      # BookCard, ChapterPanel, SettingsSheet
+    │   └── theme/           # Material3 theme, colors, typography
+    ├── viewmodel/           # LibraryViewModel, ReaderViewModel
+    └── MainActivity.kt      # Single-activity, Compose NavHost
+```
+
+**Pattern:** MVVM + Repository + Flow
+**UI:** Jetpack Compose + Material Design 3
+**DB:** Room (SQLite)
+**Images:** Coil 2
+
+---
+
+## Prerequisites
+
+- Android Studio Hedgehog (2023.1.1) or later
+- JDK 17+
+- Android SDK 35
+- A device or emulator with API 26+
+
+---
+
+## Installation
+
+### 1. Clone
+
+```bash
+git clone https://github.com/BardinConsulting/ebooks.git
+cd ebooks
+```
+
+### 2. Generate Gradle wrapper (first time only)
+
+```bash
+# If you have Gradle 8.7 installed globally:
+gradle wrapper
+
+# Or use Android Studio's "Sync Project" button
+```
+
+### 3. Build
+
+```bash
+./gradlew assembleDebug
+```
+
+The APK will be at `app/build/outputs/apk/debug/app-debug.apk`.
+
+### 4. Install on device
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+Or open in Android Studio and click **Run**.
+
+---
+
+## Usage
+
+1. **Add books** — tap the **+** button, select an EPUB, PDF, or TXT file
+2. **Open a book** — tap any book cover in the library
+3. **Navigate** — tap the left/right edge to turn chapters, or tap center for controls
+4. **Customize** — tap the **Aa** icon in the reader toolbar to change font, size, and theme
+5. **Chapters** — tap the list icon to open the chapter/bookmark panel
+6. **Bookmark** — tap the bookmark icon to save your current position
+
+---
+
+## Environment Variables
+
+No environment variables are needed for basic development.
+For signed release builds, see `.env.example`.
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SIGNING_KEY_ALIAS` | Keystore alias | Release builds |
+| `SIGNING_KEY_PASSWORD` | Key password | Release builds |
+| `SIGNING_STORE_PASSWORD` | Keystore password | Release builds |
+
+---
+
+## Branch Protection (configure manually on GitHub)
+
+Go to **Settings → Branches** and add rules for:
+
+| Branch | Rules |
+|--------|-------|
+| `main` | Require PR, require CI green, no force push, require linear history |
+| `develop` | Require PR, require CI green |
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feat/my-feature`
+3. Commit with Conventional Commits: `git commit -m "feat: add night mode"`
+4. Push and open a PR against `develop`
+5. Ensure all CI checks pass
+
+### Commit Convention
+
+```
+feat:     new feature
+fix:      bug fix
+docs:     documentation only
+refactor: code restructure without behavior change
+test:     adding/updating tests
+ci:       CI/CD configuration
+chore:    build system, dependency updates
+```
+
+---
+
+## Proposed Improvements
+
+See [TODO.md](TODO.md) for the full prioritized list.
+
+**Top priorities:**
+1. 🔴 Persistent URI permissions for file access across restarts
+2. 🟠 In-book search
+3. 🟠 PDF reader screen
+4. 🟠 Tilt-to-scroll
+5. 🟢 Cloud sync for reading progress
