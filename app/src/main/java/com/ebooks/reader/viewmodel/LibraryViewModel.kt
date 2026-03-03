@@ -45,31 +45,39 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _searchQuery = MutableStateFlow("")
     private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
 
+    private data class FilterState(
+        val status: ReadingStatus?,
+        val fileType: String?,
+        val viewMode: ViewMode,
+        val query: String
+    )
+
+    // Group flows to stay within the 5-parameter typed combine() overload
+    private val booksWithSort = _sortOrder.flatMapLatest { sort ->
+        getBooksFlow(sort).map { books -> Pair(sort, books) }
+    }
+    private val filterState = combine(_filterStatus, _filterFileType, _viewMode, _searchQuery) {
+        status, fileType, viewMode, query -> FilterState(status, fileType, viewMode, query)
+    }
+
     val uiState: StateFlow<LibraryUiState> = combine(
-        _sortOrder.flatMapLatest { sort -> getBooksFlow(sort) },
-        _sortOrder,
-        _filterStatus,
-        _filterFileType,
-        _viewMode,
-        _searchQuery,
+        booksWithSort,
+        filterState,
         _importState
-    ) { booksArray, sort, status, fileType, mode, query, importState ->
-        @Suppress("UNCHECKED_CAST")
-        val allBooks = booksArray as List<Book>
-        val filtered = allBooks
-            .filter { book ->
-                (status == null || book.readingStatus == status) &&
-                (fileType == null || book.fileType == fileType) &&
-                (query.isBlank() || book.title.contains(query, ignoreCase = true) ||
-                 book.author.contains(query, ignoreCase = true))
-            }
+    ) { (sort, books), filter, importState ->
+        val filtered = books.filter { book ->
+            (filter.status == null || book.readingStatus == filter.status) &&
+            (filter.fileType == null || book.fileType == filter.fileType) &&
+            (filter.query.isBlank() || book.title.contains(filter.query, ignoreCase = true) ||
+             book.author.contains(filter.query, ignoreCase = true))
+        }
         LibraryUiState(
             books = filtered,
             sortOrder = sort,
-            viewMode = mode,
-            filterStatus = status,
-            filterFileType = fileType,
-            searchQuery = query,
+            viewMode = filter.viewMode,
+            filterStatus = filter.status,
+            filterFileType = filter.fileType,
+            searchQuery = filter.query,
             importProgress = importState
         )
     }.stateIn(

@@ -12,8 +12,7 @@ import com.ebooks.reader.data.parser.EpubBook
 import com.ebooks.reader.data.parser.EpubChapter
 import com.ebooks.reader.data.parser.ReaderTheme
 import com.ebooks.reader.data.repository.BookRepository
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -65,45 +64,57 @@ class ReaderViewModel(
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
-    private var progressSaveJob: Job? = null
     private var autoScrollJob: Job? = null
+
+    // Flow-based debounce for scroll progress saving — avoids creating a new Job
+    // object on every scroll event (which can fire hundreds of times per second).
+    private val scrollEvents = MutableSharedFlow<Int>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     init {
         if (bookId.isNotBlank()) {
             loadBook()
         }
+        viewModelScope.launch {
+            scrollEvents
+                .debounce(1_000L)
+                .collect { position -> persistProgress(position) }
+        }
     }
 
     private fun loadBook() {
+        // Single coroutine for sequential loading — avoids the race where the
+        // second launch reads an empty chapters list before the first has populated it.
         viewModelScope.launch {
             val book = repository.getBookById(bookId) ?: run {
                 _uiState.update { it.copy(error = "Book not found") }
                 return@launch
             }
-            val epubBook = repository.parseEpubBook(bookId)
+            val epubBook = repository.parseEpubBook(book)
             val progress = repository.getReadingProgress(bookId)
+            val chapters = epubBook?.chapters ?: emptyList()
+            val startIndex = progress?.chapterIndex?.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)) ?: 0
 
             _uiState.update { state ->
                 state.copy(
                     book = book,
                     epubBook = epubBook,
-                    chapters = epubBook?.chapters ?: emptyList(),
-                    currentChapterIndex = progress?.chapterIndex ?: 0
+                    chapters = chapters,
+                    currentChapterIndex = startIndex
                 )
             }
 
             repository.updateLastRead(bookId)
 
-            // Load bookmarks
-            repository.getBookmarks(bookId).collect { bookmarks ->
-                _uiState.update { it.copy(bookmarks = bookmarks) }
+            // Load the starting chapter now that state is populated
+            if (chapters.isNotEmpty()) {
+                loadChapter(startIndex)
             }
         }
 
+        // Observe bookmarks in a separate coroutine (infinite flow — must be isolated)
         viewModelScope.launch {
-            val chapters = _uiState.value.chapters
-            if (chapters.isNotEmpty()) {
-                loadChapter(_uiState.value.currentChapterIndex)
+            repository.getBookmarks(bookId).collect { bookmarks ->
+                _uiState.update { it.copy(bookmarks = bookmarks) }
             }
         }
     }
@@ -259,23 +270,21 @@ class ReaderViewModel(
     // ── Progress Saving ───────────────────────────────────────────────────────
 
     fun saveProgress(scrollPosition: Int) {
-        progressSaveJob?.cancel()
-        progressSaveJob = viewModelScope.launch {
-            delay(1000) // Debounce
-            val state = _uiState.value
-            repository.saveReadingProgress(
-                ReadingProgress(
-                    bookId = bookId,
-                    chapterIndex = state.currentChapterIndex,
-                    chapterHref = state.chapters.getOrNull(state.currentChapterIndex)?.href ?: "",
-                    scrollPosition = scrollPosition
-                )
+        scrollEvents.tryEmit(scrollPosition)
+    }
+
+    private suspend fun persistProgress(scrollPosition: Int) {
+        val state = _uiState.value
+        repository.saveReadingProgress(
+            ReadingProgress(
+                bookId = bookId,
+                chapterIndex = state.currentChapterIndex,
+                chapterHref = state.chapters.getOrNull(state.currentChapterIndex)?.href ?: "",
+                scrollPosition = scrollPosition
             )
-            // Update book status if we're in the last chapter
-            val isLastChapter = state.currentChapterIndex == state.chapters.size - 1
-            if (isLastChapter) {
-                repository.updateReadingStatus(bookId, ReadingStatus.READ)
-            }
+        )
+        if (state.currentChapterIndex == state.chapters.size - 1) {
+            repository.updateReadingStatus(bookId, ReadingStatus.READ)
         }
     }
 

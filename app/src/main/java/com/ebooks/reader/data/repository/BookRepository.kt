@@ -159,17 +159,11 @@ class BookRepository(private val context: Context) {
         }
     }
 
-    suspend fun updateReadingStatus(bookId: String, status: ReadingStatus) {
-        val book = dao.getBookById(bookId) ?: return
-        dao.updateBook(book.copy(readingStatus = status))
-    }
+    suspend fun updateReadingStatus(bookId: String, status: ReadingStatus) =
+        dao.updateReadingStatus(bookId, status)
 
-    suspend fun updateLastRead(bookId: String) {
-        val book = dao.getBookById(bookId) ?: return
-        val newStatus = if (book.readingStatus == ReadingStatus.UNREAD) ReadingStatus.READING
-                        else book.readingStatus
-        dao.updateBook(book.copy(lastReadAt = System.currentTimeMillis(), readingStatus = newStatus))
-    }
+    suspend fun updateLastRead(bookId: String) =
+        dao.updateLastRead(bookId, System.currentTimeMillis())
 
     // ── Reading Progress ──────────────────────────────────────────────────────
 
@@ -196,11 +190,10 @@ class BookRepository(private val context: Context) {
             epubParser.getChapterHtml(uri, chapterHref, theme)
         }
 
-    suspend fun parseEpubBook(bookId: String): com.ebooks.reader.data.parser.EpubBook? =
+    // Accept the already-fetched Book to avoid an extra DB round-trip
+    suspend fun parseEpubBook(book: Book): com.ebooks.reader.data.parser.EpubBook? =
         withContext(Dispatchers.IO) {
-            val book = dao.getBookById(bookId) ?: return@withContext null
-            val uri = Uri.parse(book.filePath)
-            epubParser.parse(uri)
+            epubParser.parse(Uri.parse(book.filePath))
         }
 
     // ── File Utilities ────────────────────────────────────────────────────────

@@ -21,7 +21,7 @@ interface BookDao {
     @Query("SELECT * FROM books ORDER BY addedAt DESC")
     fun getAllBooksByDate(): Flow<List<Book>>
 
-    @Query("SELECT * FROM books ORDER BY lastReadAt DESC NULLS LAST, title ASC")
+    @Query("SELECT * FROM books ORDER BY CASE WHEN lastReadAt IS NULL THEN 1 ELSE 0 END ASC, lastReadAt DESC, title ASC")
     fun getAllBooksByRecent(): Flow<List<Book>>
 
     @Query("SELECT * FROM books WHERE readingStatus = :status ORDER BY title ASC")
@@ -47,6 +47,14 @@ interface BookDao {
 
     @Query("DELETE FROM books WHERE id = :bookId")
     suspend fun deleteBookById(bookId: String)
+
+    @Query("UPDATE books SET readingStatus = :status WHERE id = :bookId")
+    suspend fun updateReadingStatus(bookId: String, status: ReadingStatus)
+
+    @Query("""UPDATE books SET lastReadAt = :time,
+              readingStatus = CASE WHEN readingStatus = 'UNREAD' THEN 'READING' ELSE readingStatus END
+              WHERE id = :bookId""")
+    suspend fun updateLastRead(bookId: String, time: Long)
 
     // ── Reading Progress ──────────────────────────────────────────────────────
 

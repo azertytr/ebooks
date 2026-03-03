@@ -1,22 +1,38 @@
 # Add project specific ProGuard rules here.
 
-# Keep Room entities and DAOs
+# ── Room ──────────────────────────────────────────────────────────────────────
 -keep class com.ebooks.reader.data.db.** { *; }
+-keep enum com.ebooks.reader.data.db.entities.** { *; }
 
-# Keep ViewModel classes
+# ── ViewModels ────────────────────────────────────────────────────────────────
 -keep class com.ebooks.reader.viewmodel.** { *; }
 
-# Keep JavaScript interface methods
+# ── UI data / state classes ──────────────────────────────────────────────────
+-keep class com.ebooks.reader.data.parser.** { *; }
+
+# ── WebView JavaScript interface ─────────────────────────────────────────────
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# Coil
--dontwarn coil.**
+# ── XML Pull Parser (used by EpubParser) ─────────────────────────────────────
+-keep class org.xmlpull.v1.** { *; }
 
-# Coroutines
+# ── Coil ─────────────────────────────────────────────────────────────────────
+-dontwarn coil.**
+-keep class coil.** { *; }
+-keepclassmembers class * extends coil.fetch.Fetcher { *; }
+-keepclassmembers class * extends coil.decode.Decoder { *; }
+
+# ── Coroutines ────────────────────────────────────────────────────────────────
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
 -keepclassmembers class kotlinx.coroutines.** {
     volatile <fields>;
+}
+
+# ── Jetpack Compose ───────────────────────────────────────────────────────────
+-dontwarn androidx.compose.**
+-keepclassmembers class * {
+    *** *(...);
 }

@@ -14,11 +14,11 @@ enum class FileType(val extension: String, val mimeType: String) {
 
     companion object {
         fun fromExtension(ext: String): FileType? =
-            values().find { it.extension.equals(ext, ignoreCase = true) }
+            entries.find { it.extension.equals(ext, ignoreCase = true) }
     }
 }
 
-@Entity(tableName = "books")
+@Entity(tableName = "books", indices = [androidx.room.Index(value = ["filePath"], unique = true)])
 data class Book(
     @PrimaryKey val id: String,
     val title: String,
