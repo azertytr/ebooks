@@ -1,0 +1,41 @@
+package com.ebooks.reader.data.db.entities
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+enum class ReadingStatus { UNREAD, READING, READ }
+
+enum class FileType(val extension: String, val mimeType: String) {
+    EPUB("epub", "application/epub+zip"),
+    PDF("pdf", "application/pdf"),
+    TXT("txt", "text/plain"),
+    FB2("fb2", "application/x-fictionbook+xml"),
+    CBZ("cbz", "application/x-cbz");
+
+    companion object {
+        fun fromExtension(ext: String): FileType? =
+            values().find { it.extension.equals(ext, ignoreCase = true) }
+    }
+}
+
+@Entity(tableName = "books")
+data class Book(
+    @PrimaryKey val id: String,
+    val title: String,
+    val author: String,
+    val filePath: String,
+    val fileType: String,
+    val coverPath: String? = null,
+    val fileSize: Long = 0L,
+    val addedAt: Long = System.currentTimeMillis(),
+    val lastReadAt: Long? = null,
+    val readingStatus: ReadingStatus = ReadingStatus.UNREAD,
+    val totalChapters: Int = 0,
+    val currentChapter: Int = 0,
+    val currentPage: Int = 0,
+    val description: String? = null,
+    val publisher: String? = null,
+    val language: String? = null,
+    val series: String? = null,
+    val seriesIndex: Int? = null,
+)

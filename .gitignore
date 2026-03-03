@@ -1,0 +1,63 @@
+# Android
+*.iml
+.gradle/
+.idea/
+local.properties
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Keys & Secrets
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+.env
+.env.*
+!.env.example
+
+# Gradle
+gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IntelliJ / Android Studio
+*.iws
+out/
+.navigation/
+.idea/
+*.class
+bin/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Node (if using any JS tooling)
+node_modules/
+npm-debug.log
+
+# Generated sources
+app/build/generated/
+
+# Test coverage
+coverage/
+*.exec
+
+# WhatsApp screenshots (reference only)
+WhatsApp\ Image\ *.jpeg
+WhatsApp\ Image\ *.jpg
