@@ -10,10 +10,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Reusable Gradle cache key used by every job
-env:
-  GRADLE_CACHE_KEY: gradle-${{ github.job }}-${{ hashFiles('**/*.gradle.kts', '**/libs.versions.toml', '**/gradle-wrapper.properties') }}
-
 jobs:
   # ── 1. Lint — no Android SDK required ────────────────────────────────────────
   lint:
