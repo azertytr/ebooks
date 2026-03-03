@@ -1,60 +1,148 @@
 name: Auto Release
 
-# Triggered on every push to main. Reads conventional commit messages since the
-# last tag, bumps the semver accordingly, creates a new tag, then the existing
-# release.yml workflow handles building and publishing the APK automatically.
+# Triggered on every push to main (after auto-merge) or manually.
+#
+# Does everything in one workflow — avoids the GITHUB_TOKEN limitation where
+# a tag pushed by a workflow cannot trigger a second workflow.
 #
 # Commit prefix → version bump:
-#   feat!: / fix!: / BREAKING CHANGE  →  major
-#   feat:                              →  minor
-#   fix: / perf: / refactor: / …      →  patch
-#   chore: / docs: / style: / ci:     →  no release
+#   feat!: / BREAKING CHANGE  →  major
+#   feat:                     →  minor
+#   fix: / perf: / refactor:  →  patch
+#   chore: / docs: / ci:      →  patch (tagged but low-impact)
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — tag and build but do NOT publish release'
+        required: false
+        default: 'false'
 
 permissions:
-  contents: write   # needed to push the new tag
+  contents: write
 
 jobs:
-  auto-tag:
-    name: Bump version & tag
+  release:
+    name: Tag → Build APK → Publish Release
     runs-on: ubuntu-latest
-    outputs:
-      new_tag:   ${{ steps.tag.outputs.new_tag }}
-      changelog: ${{ steps.tag.outputs.changelog }}
 
     steps:
+      # ── 1. Checkout full history (tag action needs all commits) ───────────────
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0   # full history so the action can read all commits
+          fetch-depth: 0
 
-      - name: Bump version from conventional commits
+      # ── 2. Bump semver from conventional commits, create tag ─────────────────
+      - name: Bump version & create tag
         id: tag
         uses: mathieudutour/github-tag-action@v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Commits with these prefixes produce NO new tag (skip release)
+          tag_prefix: 'v'
+          default_bump: patch
           custom_release_rules: |
             chore:patch:Chores
             docs:patch:Documentation
             style:patch:Styles
             ci:patch:CI
-          # Allow the action to create annotated tags
-          tag_prefix: 'v'
-          # Default bump when no conventional prefix is detected
-          default_bump: patch
-          # Never bump on merge commits that only change CI files
-          dry_run: false
 
-      - name: Log outcome
+      - name: Skip if no releasable commits
+        if: steps.tag.outputs.new_tag == ''
         run: |
-          if [ -z "${{ steps.tag.outputs.new_tag }}" ]; then
-            echo "No releasable commits since last tag — skipping."
-          else
-            echo "New tag: ${{ steps.tag.outputs.new_tag }}"
-            echo "Changelog:"
-            echo "${{ steps.tag.outputs.changelog }}"
-          fi
+          echo "No releasable commits since last tag — nothing to release."
+          exit 0
+
+      # ── 3. Build environment ──────────────────────────────────────────────────
+      - uses: actions/setup-java@v4
+        if: steps.tag.outputs.new_tag != ''
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: actions/cache@v4
+        if: steps.tag.outputs.new_tag != ''
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-release-${{ hashFiles('**/*.gradle.kts', '**/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-release-
+
+      - uses: android-actions/setup-android@v3
+        if: steps.tag.outputs.new_tag != ''
+
+      - run: chmod +x gradlew
+        if: steps.tag.outputs.new_tag != ''
+
+      # ── 4. Decode keystore (optional — unsigned build if secret not set) ──────
+      - name: Decode keystore
+        if: steps.tag.outputs.new_tag != '' && secrets.SIGNING_KEYSTORE_BASE64 != ''
+        run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+
+      # ── 5. Build signed release APK ───────────────────────────────────────────
+      - name: Build & sign release APK
+        if: steps.tag.outputs.new_tag != '' && secrets.SIGNING_KEYSTORE_BASE64 != ''
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: ${{ steps.tag.outputs.new_tag }}
+        run: |
+          ./gradlew assembleRelease --no-daemon --build-cache \
+            -PVERSION_CODE="${VERSION_CODE}" \
+            -PVERSION_NAME="${VERSION_NAME}" \
+            -Pandroid.injected.signing.store.file="${GITHUB_WORKSPACE}/keystore.jks" \
+            -Pandroid.injected.signing.store.password="${{ secrets.SIGNING_STORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.SIGNING_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.SIGNING_KEY_PASSWORD }}"
+
+      # ── 5b. Build unsigned APK (fallback when no keystore secrets) ────────────
+      - name: Build unsigned release APK
+        if: steps.tag.outputs.new_tag != '' && secrets.SIGNING_KEYSTORE_BASE64 == ''
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: ${{ steps.tag.outputs.new_tag }}
+        run: |
+          ./gradlew assembleRelease --no-daemon --build-cache \
+            -PVERSION_CODE="${VERSION_CODE}" \
+            -PVERSION_NAME="${VERSION_NAME}"
+
+      # ── 6. Rename APK with version ────────────────────────────────────────────
+      - name: Stage APK
+        if: steps.tag.outputs.new_tag != ''
+        run: |
+          VER="${{ steps.tag.outputs.new_tag }}"
+          VER="${VER#v}"
+          mkdir -p release
+          find app/build/outputs/apk/release -name "*.apk" \
+            -exec cp {} "release/EbookReader-${VER}.apk" \;
+          ls -lh release/
+
+      # ── 7. Upload as workflow artifact (accessible even on dry-run) ───────────
+      - name: Upload APK artifact
+        if: steps.tag.outputs.new_tag != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: EbookReader-${{ steps.tag.outputs.new_tag }}
+          path: release/*.apk
+          retention-days: 90
+
+      # ── 8. Create GitHub Release with APK attached ────────────────────────────
+      - name: Create GitHub Release
+        if: steps.tag.outputs.new_tag != '' && github.event.inputs.dry_run != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.new_tag }}
+          name: EbookReader ${{ steps.tag.outputs.new_tag }}
+          body: |
+            ## EbookReader ${{ steps.tag.outputs.new_tag }}
+
+            Install on any Android device running **API 26 (Android 8.0)+**.
+
+            > Enable **Install from unknown sources** in Android Settings if prompted.
+
+            ### What's changed
+            ${{ steps.tag.outputs.changelog }}
+          files: release/*.apk
+          fail_on_unmatched_files: true
