@@ -1,0 +1,43 @@
+name: Auto Merge
+
+# Automatically merges a PR into main once all required CI checks pass.
+#
+# Flow:
+#   PR opened / updated
+#     → ci.yml runs (lint + test + build-debug in parallel)
+#     → this workflow enables auto-merge (squash) on the PR
+#     → GitHub merges when all checks are green
+#     → auto-release.yml triggers on the main push
+#     → auto-release.yml creates a semver tag from the commit message
+#     → release.yml triggers on the tag → builds + publishes the APK
+#
+# Requirements:
+#   • "Allow auto-merge" must be enabled in the repo Settings → General.
+#   • Branch protection on main must require status checks
+#     (lint, test, build-debug) before merging.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    # Skip draft PRs — only auto-merge when the PR is marked ready.
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Enable auto-merge (squash)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Use the GitHub CLI to enable auto-merge with squash strategy.
+        # The merge will only actually happen once all required status checks pass.
+        run: |
+          gh pr merge --auto --squash "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}"
