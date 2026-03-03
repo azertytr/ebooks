@@ -18,8 +18,11 @@ android {
         applicationId = "com.ebooks.reader"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // Supplied by CI via -PVERSION_CODE / VERSION_NAME env vars; falls back to dev defaults.
+        versionCode = (System.getenv("VERSION_CODE") ?: findProperty("VERSION_CODE"))
+            ?.toString()?.toIntOrNull() ?: 1
+        versionName = (System.getenv("VERSION_NAME") ?: findProperty("VERSION_NAME"))
+            ?.toString()?.removePrefix("v") ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -27,6 +30,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -50,6 +54,16 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    lint {
+        // Don't fail CI on warnings — lint errors still block.
+        warningsAsErrors = false
+        // Only scan app sources, not every transitive dependency.
+        checkDependencies = false
+        // Write a SARIF report for GitHub code scanning upload.
+        sarifReport = true
+        htmlReport = true
     }
 
     packaging {
