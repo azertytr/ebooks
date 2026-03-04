@@ -20,6 +20,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 
+private const val BUNDLED_ALICE_ASSET = "alice_wonderland.epub"
+private const val BUNDLED_ALICE_SENTINEL = "bundled:alice_wonderland"
+
 class BookRepository(private val context: Context) {
 
     private val db = AppDatabase.getInstance(context)
@@ -183,18 +186,59 @@ class BookRepository(private val context: Context) {
 
     // ── EPUB Content ──────────────────────────────────────────────────────────
 
+    private fun resolveUri(filePath: String): Uri = when (filePath) {
+        BUNDLED_ALICE_SENTINEL -> Uri.fromFile(File(context.filesDir, "bundled/$BUNDLED_ALICE_ASSET"))
+        else -> Uri.parse(filePath)
+    }
+
     suspend fun getChapterHtml(bookId: String, chapterHref: String, theme: ReaderTheme): String? =
         withContext(Dispatchers.IO) {
             val book = dao.getBookById(bookId) ?: return@withContext null
-            val uri = Uri.parse(book.filePath)
-            epubParser.getChapterHtml(uri, chapterHref, theme)
+            epubParser.getChapterHtml(resolveUri(book.filePath), chapterHref, theme)
         }
 
     // Accept the already-fetched Book to avoid an extra DB round-trip
     suspend fun parseEpubBook(book: Book): com.ebooks.reader.data.parser.EpubBook? =
         withContext(Dispatchers.IO) {
-            epubParser.parse(Uri.parse(book.filePath))
+            epubParser.parse(resolveUri(book.filePath))
         }
+
+    // ── Bundled Books ─────────────────────────────────────────────────────────
+
+    suspend fun seedBundledBooks() = withContext(Dispatchers.IO) {
+        // Only seed once — sentinel path prevents duplicate entries
+        if (dao.getBookByPath(BUNDLED_ALICE_SENTINEL) != null) return@withContext
+
+        val booksDir = File(context.filesDir, "bundled").also { it.mkdirs() }
+        val dest = File(booksDir, BUNDLED_ALICE_ASSET)
+
+        // Copy asset to internal storage so we have a stable file:// URI
+        if (!dest.exists()) {
+            context.assets.open(BUNDLED_ALICE_ASSET).use { input ->
+                FileOutputStream(dest).use { output -> input.copyTo(output) }
+            }
+        }
+
+        val fileUri = Uri.fromFile(dest)
+        val epubBook = epubParser.parse(fileUri) ?: return@withContext
+        val bookId = UUID.randomUUID().toString()
+        val coverPath = epubBook.coverBytes?.let { saveCover(bookId, it) }
+
+        val book = Book(
+            id = bookId,
+            title = epubBook.title,
+            author = epubBook.author,
+            filePath = BUNDLED_ALICE_SENTINEL,
+            fileType = FileType.EPUB.extension,
+            coverPath = coverPath,
+            fileSize = dest.length(),
+            description = epubBook.description,
+            publisher = epubBook.publisher,
+            language = epubBook.language,
+            totalChapters = epubBook.chapters.size
+        )
+        dao.insertBook(book)
+    }
 
     // ── File Utilities ────────────────────────────────────────────────────────
 
