@@ -38,6 +38,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val repository = BookRepository(application)
 
+    init {
+        viewModelScope.launch { repository.seedBundledBooks() }
+    }
+
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
     private val _filterStatus = MutableStateFlow<ReadingStatus?>(null)
     private val _filterFileType = MutableStateFlow<String?>(null)
