@@ -51,6 +51,8 @@ data class ReaderUiState(
     val showChapterPanel: Boolean = false,
     val showSettingsPanel: Boolean = false,
     val showBookmarksPanel: Boolean = false,
+    val isSearchVisible: Boolean = false,
+    val searchQuery: String = "",
     val settings: ReaderSettings = ReaderSettings(),
     val error: String? = null
 )
@@ -67,6 +69,9 @@ class ReaderViewModel(
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
     private var autoScrollJob: Job? = null
+
+    private val _autoScrollTick = MutableSharedFlow<Int>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val autoScrollTick: SharedFlow<Int> = _autoScrollTick.asSharedFlow()
 
     // Flow-based debounce for scroll progress saving — avoids creating a new Job
     // object on every scroll event (which can fire hundreds of times per second).
@@ -190,9 +195,20 @@ class ReaderViewModel(
     // ── Settings ──────────────────────────────────────────────────────────────
 
     fun updateSettings(settings: ReaderSettings) {
+        val old = _uiState.value.settings
+        val visualChanged = settings.themeOption != old.themeOption ||
+            settings.fontSize != old.fontSize ||
+            settings.lineHeight != old.lineHeight ||
+            settings.fontFamily != old.fontFamily ||
+            settings.paragraphIndent != old.paragraphIndent
+        val speedChanged = settings.autoScrollSpeed != old.autoScrollSpeed
+
         _uiState.update { it.copy(settings = settings) }
-        // Reload chapter with new theme
-        loadChapter(_uiState.value.currentChapterIndex)
+
+        if (visualChanged) loadChapter(_uiState.value.currentChapterIndex)
+        if (speedChanged) {
+            if (settings.autoScrollSpeed > 0) startAutoScroll() else stopAutoScroll()
+        }
     }
 
     fun setTheme(theme: ReaderThemeOption) {
@@ -216,21 +232,22 @@ class ReaderViewModel(
 
     fun toggleAutoScroll() {
         val current = _uiState.value.settings.autoScrollSpeed
-        val newSpeed = if (current > 0) 0 else 3
-        updateSettings(_uiState.value.settings.copy(autoScrollSpeed = newSpeed))
-        if (newSpeed > 0) startAutoScroll() else stopAutoScroll()
+        setAutoScrollSpeed(if (current > 0) 0 else 3)
     }
 
     fun setAutoScrollSpeed(speed: Int) {
-        _uiState.update { it.copy(settings = it.settings.copy(autoScrollSpeed = speed)) }
+        val coerced = speed.coerceIn(0, 10)
+        _uiState.update { it.copy(settings = it.settings.copy(autoScrollSpeed = coerced)) }
+        if (coerced > 0) startAutoScroll() else stopAutoScroll()
     }
 
     private fun startAutoScroll() {
         autoScrollJob?.cancel()
         autoScrollJob = viewModelScope.launch {
             while (true) {
-                delay(50)
-                // Signal WebView to scroll — handled via JS bridge in the UI layer
+                delay(50L)
+                val speed = _uiState.value.settings.autoScrollSpeed
+                if (speed > 0) _autoScrollTick.emit(speed)
             }
         }
     }
@@ -238,6 +255,14 @@ class ReaderViewModel(
     private fun stopAutoScroll() {
         autoScrollJob?.cancel()
         autoScrollJob = null
+    }
+
+    fun toggleSearch() {
+        _uiState.update { it.copy(isSearchVisible = !it.isSearchVisible, searchQuery = "") }
+    }
+
+    fun setSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
     }
 
     // ── Bookmarks ─────────────────────────────────────────────────────────────

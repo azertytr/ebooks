@@ -112,6 +112,24 @@ fun ReaderSettingsSheet(
                 Switch(checked = settings.keepScreenOn, onCheckedChange = { onSettingsChanged(settings.copy(keepScreenOn = it)) })
             }
 
+            // Auto-scroll speed
+            SectionLabel("Auto-scroll Speed")
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.SlowMotionVideo, null, modifier = Modifier.size(20.dp))
+                Slider(
+                    value = settings.autoScrollSpeed.toFloat(),
+                    onValueChange = { onSettingsChanged(settings.copy(autoScrollSpeed = it.toInt())) },
+                    valueRange = 0f..10f,
+                    steps = 9,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    if (settings.autoScrollSpeed == 0) "Off" else "${settings.autoScrollSpeed}",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.width(32.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
