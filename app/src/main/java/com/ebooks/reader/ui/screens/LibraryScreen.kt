@@ -40,7 +40,7 @@ import com.ebooks.reader.viewmodel.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
-    onOpenBook: (String) -> Unit,
+    onOpenBook: (bookId: String, fileType: String) -> Unit,
     viewModel: LibraryViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -118,7 +118,7 @@ fun LibraryScreen(
                                 items(uiState.books, key = { it.id }) { book ->
                                     BookGridCard(
                                         book = book,
-                                        onClick = { onOpenBook(book.id) },
+                                        onClick = { onOpenBook(book.id, book.fileType) },
                                         onLongClick = { showMenuFor = book }
                                     )
                                 }
@@ -132,7 +132,7 @@ fun LibraryScreen(
                                 items(uiState.books, key = { it.id }) { book ->
                                     BookListItem(
                                         book = book,
-                                        onClick = { onOpenBook(book.id) },
+                                        onClick = { onOpenBook(book.id, book.fileType) },
                                         onLongClick = { showMenuFor = book }
                                     )
                                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -182,7 +182,7 @@ fun LibraryScreen(
         BookContextMenu(
             book = book,
             onDismiss = { showMenuFor = null },
-            onOpen = { onOpenBook(book.id); showMenuFor = null },
+            onOpen = { onOpenBook(book.id, book.fileType); showMenuFor = null },
             onMarkStatus = { status -> viewModel.updateReadingStatus(book.id, status); showMenuFor = null },
             onDelete = { viewModel.deleteBook(book); showMenuFor = null }
         )

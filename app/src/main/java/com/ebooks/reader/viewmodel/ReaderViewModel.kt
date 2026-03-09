@@ -27,6 +27,8 @@ enum class FontFamily(val css: String, val displayName: String) {
     OPENTYPE("'OpenDyslexic', serif", "Dyslexic");
 }
 
+enum class OrientationLock { AUTO, PORTRAIT, LANDSCAPE }
+
 data class ReaderSettings(
     val themeOption: ReaderThemeOption = ReaderThemeOption.LIGHT,
     val fontSize: Int = 18,
@@ -36,7 +38,9 @@ data class ReaderSettings(
     val brightness: Float = -1f,  // -1 = system
     val autoScrollSpeed: Int = 0, // 0 = off, 1-10 speed
     val keepScreenOn: Boolean = false,
-    val isFullscreen: Boolean = false
+    val isFullscreen: Boolean = false,
+    val orientationLock: OrientationLock = OrientationLock.AUTO,
+    val tiltScrollEnabled: Boolean = false
 )
 
 data class ReaderUiState(
@@ -54,7 +58,10 @@ data class ReaderUiState(
     val isSearchVisible: Boolean = false,
     val searchQuery: String = "",
     val settings: ReaderSettings = ReaderSettings(),
-    val error: String? = null
+    /** Fatal error shown when the book cannot be loaded at all. */
+    val error: String? = null,
+    /** Non-fatal error shown as a snackbar when a single chapter fails to load. */
+    val chapterError: String? = null
 )
 
 class ReaderViewModel(
@@ -96,7 +103,15 @@ class ReaderViewModel(
                 _uiState.update { it.copy(error = "Book not found") }
                 return@launch
             }
-            val epubBook = repository.parseEpubBook(book)
+            val epubBook = try {
+                repository.parseEpubBook(book)
+            } catch (_: java.io.IOException) {
+                _uiState.update { it.copy(error = "Could not open book file. It may have been moved or deleted.") }
+                return@launch
+            } catch (_: Exception) {
+                _uiState.update { it.copy(error = "Failed to parse book file.") }
+                return@launch
+            }
             val progress = repository.getReadingProgress(bookId)
             val chapters = epubBook?.chapters ?: emptyList()
             val startIndex = progress?.chapterIndex?.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)) ?: 0
@@ -131,15 +146,23 @@ class ReaderViewModel(
         if (index < 0 || index >= chapters.size) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isChapterLoading = true, currentChapterIndex = index) }
+            _uiState.update { it.copy(isChapterLoading = true, currentChapterIndex = index, chapterError = null) }
             val chapter = chapters[index]
             val theme = buildReaderTheme()
             val html = repository.getChapterHtml(bookId, chapter.href, theme)
-            _uiState.update { it.copy(
-                currentChapterHtml = html,
-                isChapterLoading = false,
-                showChapterPanel = false
-            )}
+            if (html == null) {
+                _uiState.update { it.copy(
+                    isChapterLoading = false,
+                    chapterError = "Could not load chapter. The file may have been moved or deleted."
+                )}
+            } else {
+                _uiState.update { it.copy(
+                    currentChapterHtml = html,
+                    isChapterLoading = false,
+                    showChapterPanel = false,
+                    chapterError = null
+                )}
+            }
         }
     }
 
@@ -255,6 +278,10 @@ class ReaderViewModel(
     private fun stopAutoScroll() {
         autoScrollJob?.cancel()
         autoScrollJob = null
+    }
+
+    fun dismissChapterError() {
+        _uiState.update { it.copy(chapterError = null) }
     }
 
     fun toggleSearch() {

@@ -36,6 +36,10 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE filePath = :path")
     suspend fun getBookByPath(path: String): Book?
 
+    /** One-shot snapshot of all books — for background operations like cover rebuild. */
+    @Query("SELECT * FROM books")
+    suspend fun getAllBooksSnapshot(): List<Book>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBook(book: Book)
 

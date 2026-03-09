@@ -144,9 +144,25 @@ class BookRepository(private val context: Context) {
         coverFile.absolutePath
     }.getOrNull()
 
-    fun rebuildCovers() {
-        // Trigger re-import of cover images for all books
-        // Useful if cover files were deleted
+    /**
+     * Re-parses the source file of every EPUB book and regenerates its cover image.
+     * Useful after the covers directory is cleared or migrated.
+     * Runs on the IO dispatcher; call from a coroutine scope.
+     */
+    suspend fun rebuildCovers() = withContext(Dispatchers.IO) {
+        val allBooks = dao.getAllBooksSnapshot()
+        for (book in allBooks) {
+            if (book.fileType != FileType.EPUB.extension) continue
+            try {
+                val uri = resolveUri(book.filePath)
+                val epubBook = epubParser.parse(uri) ?: continue
+                val coverBytes = epubBook.coverBytes ?: continue
+                val newCoverPath = saveCover(book.id, coverBytes) ?: continue
+                dao.updateBook(book.copy(coverPath = newCoverPath))
+            } catch (_: Exception) {
+                // Skip books whose file is no longer accessible
+            }
+        }
     }
 
     // ── Book Updates ──────────────────────────────────────────────────────────

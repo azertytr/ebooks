@@ -28,7 +28,12 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ebook_reader.db"
-                ).build().also { INSTANCE = it }
+                )
+                    // When schema changes without a migration path, wipe and rebuild the
+                    // database rather than crashing.  Reading progress is re-seeded on next
+                    // launch; users simply start fresh — acceptable at version 1.
+                    .fallbackToDestructiveMigration()
+                    .build().also { INSTANCE = it }
             }
     }
 }

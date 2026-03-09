@@ -124,4 +124,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun updateReadingStatus(bookId: String, status: ReadingStatus) {
         viewModelScope.launch { repository.updateReadingStatus(bookId, status) }
     }
+
+    fun rebuildCovers() {
+        viewModelScope.launch { repository.rebuildCovers() }
+    }
 }
