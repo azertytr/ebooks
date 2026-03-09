@@ -43,6 +43,12 @@ class BookRepository(private val context: Context) {
     // ── Import ────────────────────────────────────────────────────────────────
 
     suspend fun importBook(uri: Uri): Book? = withContext(Dispatchers.IO) {
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: SecurityException) {}
+
         val fileName = getFileName(uri) ?: return@withContext null
         val extension = fileName.substringAfterLast(".", "").lowercase()
         val fileType = FileType.fromExtension(extension) ?: return@withContext null
@@ -194,13 +200,33 @@ class BookRepository(private val context: Context) {
     suspend fun getChapterHtml(bookId: String, chapterHref: String, theme: ReaderTheme): String? =
         withContext(Dispatchers.IO) {
             val book = dao.getBookById(bookId) ?: return@withContext null
-            epubParser.getChapterHtml(resolveUri(book.filePath), chapterHref, theme)
+            when (book.fileType) {
+                "txt", "fb2" -> {
+                    val uri = resolveUri(book.filePath)
+                    val text = try {
+                        context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+                    } catch (_: Exception) { null } ?: return@withContext null
+                    epubParser.buildHtmlFromText(text, theme)
+                }
+                else -> epubParser.getChapterHtml(resolveUri(book.filePath), chapterHref, theme)
+            }
         }
 
     // Accept the already-fetched Book to avoid an extra DB round-trip
     suspend fun parseEpubBook(book: Book): com.ebooks.reader.data.parser.EpubBook? =
         withContext(Dispatchers.IO) {
-            epubParser.parse(resolveUri(book.filePath))
+            when (book.fileType) {
+                "txt", "fb2" -> com.ebooks.reader.data.parser.EpubBook(
+                    title = book.title,
+                    author = book.author,
+                    description = null,
+                    publisher = null,
+                    language = null,
+                    coverBytes = null,
+                    chapters = listOf(com.ebooks.reader.data.parser.EpubChapter(0, book.title, "text://content"))
+                )
+                else -> epubParser.parse(resolveUri(book.filePath))
+            }
         }
 
     // ── Bundled Books ─────────────────────────────────────────────────────────

@@ -61,6 +61,18 @@ class EpubParser(private val context: Context) {
             }
         }.getOrNull()
 
+    fun buildHtmlFromText(text: String, theme: ReaderTheme): String {
+        val escaped = text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        val paragraphs = escaped.split(Regex("\n{2,}"))
+            .filter { it.isNotBlank() }
+            .joinToString("") { "<p>${it.replace("\n", "<br>")}</p>" }
+        val html = "<html><head></head><body>$paragraphs</body></html>"
+        return injectReaderStyles(html, theme)
+    }
+
     // ── ZIP Handling ───────────────────────────────────────────────────────────
 
     private fun <T> openZip(uri: Uri, block: (Map<String, ByteArray>) -> T): T? {

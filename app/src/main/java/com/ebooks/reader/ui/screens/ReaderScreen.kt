@@ -10,6 +10,8 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -17,10 +19,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -42,6 +47,23 @@ fun ReaderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
+
+    // Auto-scroll: collect ticks from ViewModel and drive WebView scrolling
+    LaunchedEffect(Unit) {
+        viewModel.autoScrollTick.collect { speed ->
+            webViewRef.value?.evaluateJavascript("window.scrollBy(0, ${speed * 2})", null)
+        }
+    }
+
+    // In-page search: sync query to WebView's native find API
+    LaunchedEffect(uiState.searchQuery, uiState.isSearchVisible) {
+        val webView = webViewRef.value ?: return@LaunchedEffect
+        if (uiState.isSearchVisible && uiState.searchQuery.isNotBlank()) {
+            webView.findAllAsync(uiState.searchQuery)
+        } else {
+            webView.clearMatches()
+        }
+    }
 
     val bgColor = remember(uiState.settings.themeOption) {
         when (uiState.settings.themeOption) {
@@ -88,14 +110,25 @@ fun ReaderScreen(
                         exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                         modifier = Modifier.align(Alignment.TopStart)
                     ) {
-                        ReaderTopBar(
-                            title = uiState.book?.title ?: "",
-                            chapterTitle = uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
-                            onBack = onBack,
-                            onChapters = { viewModel.toggleChapterPanel() },
-                            onBookmark = { viewModel.addBookmark() },
-                            onSettings = { viewModel.toggleSettingsPanel() }
-                        )
+                        if (uiState.isSearchVisible) {
+                            SearchTopBar(
+                                query = uiState.searchQuery,
+                                onQueryChange = viewModel::setSearchQuery,
+                                onSearchPrev = { webViewRef.value?.findNext(false) },
+                                onSearchNext = { webViewRef.value?.findNext(true) },
+                                onClose = { viewModel.toggleSearch() }
+                            )
+                        } else {
+                            ReaderTopBar(
+                                title = uiState.book?.title ?: "",
+                                chapterTitle = uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
+                                onBack = onBack,
+                                onChapters = { viewModel.toggleChapterPanel() },
+                                onBookmark = { viewModel.addBookmark() },
+                                onSettings = { viewModel.toggleSettingsPanel() },
+                                onSearch = { viewModel.toggleSearch() }
+                            )
+                        }
                     }
 
                     AnimatedVisibility(
@@ -221,7 +254,7 @@ private fun EpubWebView(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderTopBar(title: String, chapterTitle: String, onBack: () -> Unit, onChapters: () -> Unit, onBookmark: () -> Unit, onSettings: () -> Unit) {
+private fun ReaderTopBar(title: String, chapterTitle: String, onBack: () -> Unit, onChapters: () -> Unit, onBookmark: () -> Unit, onSettings: () -> Unit, onSearch: () -> Unit) {
     TopAppBar(
         title = {
             Column {
@@ -233,9 +266,42 @@ private fun ReaderTopBar(title: String, chapterTitle: String, onBack: () -> Unit
         },
         navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
         actions = {
+            IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Search in book") }
             IconButton(onClick = onChapters) { Icon(Icons.Default.List, "Chapters") }
             IconButton(onClick = onBookmark) { Icon(Icons.Default.BookmarkAdd, "Add bookmark") }
             IconButton(onClick = onSettings) { Icon(Icons.Default.TextFormat, "Settings") }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchTopBar(query: String, onQueryChange: (String) -> Unit, onSearchPrev: () -> Unit, onSearchNext: () -> Unit, onClose: () -> Unit) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    TopAppBar(
+        title = {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                placeholder = { Text("Search in book…") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearchNext() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedBorderColor = Color.Transparent
+                )
+            )
+        },
+        navigationIcon = {
+            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close search") }
+        },
+        actions = {
+            IconButton(onClick = onSearchPrev) { Icon(Icons.Default.KeyboardArrowUp, "Previous match") }
+            IconButton(onClick = onSearchNext) { Icon(Icons.Default.KeyboardArrowDown, "Next match") }
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
     )
