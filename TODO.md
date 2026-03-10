@@ -20,7 +20,7 @@
 - [ ] Add cover image rebuild functionality (re-import covers from existing books)
 - [ ] Support FB2 format (XML-based Russian ebook format)
 - [ ] Tilt-to-scroll (using `SensorManager` accelerometer)
-- [ ] Screen orientation lock per-book
+- [x] Screen orientation lock per-book
 
 ## 🟢 Nice to Have
 

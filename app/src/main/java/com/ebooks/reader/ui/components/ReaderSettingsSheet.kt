@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ebooks.reader.viewmodel.FontFamily
+import com.ebooks.reader.viewmodel.OrientationLock
 import com.ebooks.reader.viewmodel.ReaderSettings
 import com.ebooks.reader.viewmodel.ReaderThemeOption
 
@@ -110,6 +111,22 @@ fun ReaderSettingsSheet(
                     Text("Keep Screen On")
                 }
                 Switch(checked = settings.keepScreenOn, onCheckedChange = { onSettingsChanged(settings.copy(keepScreenOn = it)) })
+            }
+
+            // Orientation lock
+            SectionLabel("Screen Orientation")
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    OrientationLock.UNSPECIFIED to "Auto",
+                    OrientationLock.PORTRAIT   to "Portrait",
+                    OrientationLock.LANDSCAPE  to "Landscape"
+                ).forEach { (lock, label) ->
+                    FilterChip(
+                        selected = settings.orientationLock == lock,
+                        onClick = { onSettingsChanged(settings.copy(orientationLock = lock)) },
+                        label = { Text(label, fontSize = 12.sp) }
+                    )
+                }
             }
 
             // Auto-scroll speed

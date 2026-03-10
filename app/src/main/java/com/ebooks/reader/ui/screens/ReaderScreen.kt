@@ -1,6 +1,7 @@
 package com.ebooks.reader.ui.screens
 
 import android.annotation.SuppressLint
+import android.content.pm.ActivityInfo
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalActivity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -34,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ebooks.reader.ui.components.ChapterPanel
 import com.ebooks.reader.ui.components.ReaderSettingsSheet
+import com.ebooks.reader.viewmodel.OrientationLock
 import com.ebooks.reader.viewmodel.ReaderThemeOption
 import com.ebooks.reader.viewmodel.ReaderViewModel
 
@@ -47,6 +50,19 @@ fun ReaderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
+    val activity = LocalActivity.current
+
+    // Orientation lock: apply per-book orientation preference and restore on exit
+    DisposableEffect(uiState.settings.orientationLock) {
+        activity?.requestedOrientation = when (uiState.settings.orientationLock) {
+            OrientationLock.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            OrientationLock.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            OrientationLock.UNSPECIFIED -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
 
     // Auto-scroll: collect ticks from ViewModel and drive WebView scrolling
     LaunchedEffect(Unit) {
