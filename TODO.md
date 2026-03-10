@@ -25,7 +25,7 @@
 ## 🟢 Nice to Have
 
 - [ ] Bookshelf view mode (3D perspective like a real bookshelf)
-- [ ] Reading statistics (time read per book, pages per session)
+- [x] Reading statistics (time read per book, pages per session)
 - [ ] Sleep timer for auto-scroll
 - [ ] Text-to-speech integration
 - [ ] Share book excerpt feature

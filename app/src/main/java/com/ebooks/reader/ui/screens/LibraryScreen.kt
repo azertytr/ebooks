@@ -48,6 +48,7 @@ fun LibraryScreen(
     var showSortSheet by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showMenuFor by remember { mutableStateOf<Book?>(null) }
+    var showStatsFor by remember { mutableStateOf<Book?>(null) }
     var searchActive by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(
@@ -184,7 +185,16 @@ fun LibraryScreen(
             onDismiss = { showMenuFor = null },
             onOpen = { onOpenBook(book.id, book.fileType); showMenuFor = null },
             onMarkStatus = { status -> viewModel.updateReadingStatus(book.id, status); showMenuFor = null },
+            onStats = { showStatsFor = book; showMenuFor = null },
             onDelete = { viewModel.deleteBook(book); showMenuFor = null }
+        )
+    }
+
+    showStatsFor?.let { book ->
+        ReadingStatsDialog(
+            book = book,
+            viewModel = viewModel,
+            onDismiss = { showStatsFor = null }
         )
     }
 }
@@ -301,7 +311,14 @@ private fun FilterSheet(
 }
 
 @Composable
-private fun BookContextMenu(book: Book, onDismiss: () -> Unit, onOpen: () -> Unit, onMarkStatus: (ReadingStatus) -> Unit, onDelete: () -> Unit) {
+private fun BookContextMenu(
+    book: Book,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit,
+    onMarkStatus: (ReadingStatus) -> Unit,
+    onStats: () -> Unit,
+    onDelete: () -> Unit
+) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -309,6 +326,7 @@ private fun BookContextMenu(book: Book, onDismiss: () -> Unit, onOpen: () -> Uni
         text = {
             Column {
                 ListItem(headlineContent = { Text("Open") }, leadingContent = { Icon(Icons.Default.MenuBook, null) }, modifier = Modifier.clickable(onClick = onOpen))
+                ListItem(headlineContent = { Text("Reading Stats") }, leadingContent = { Icon(Icons.Default.Timer, null) }, modifier = Modifier.clickable(onClick = onStats))
                 HorizontalDivider()
                 Text("Mark as:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -330,6 +348,75 @@ private fun BookContextMenu(book: Book, onDismiss: () -> Unit, onOpen: () -> Uni
             confirmButton = { TextButton(onClick = onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") } }
         )
+    }
+}
+
+@Composable
+private fun ReadingStatsDialog(
+    book: Book,
+    viewModel: LibraryViewModel,
+    onDismiss: () -> Unit
+) {
+    var stats by remember { mutableStateOf<com.ebooks.reader.data.repository.BookRepository.ReadingStats?>(null) }
+
+    LaunchedEffect(book.id) {
+        stats = viewModel.getReadingStats(book.id)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Timer, null) },
+        title = { Text(book.title, maxLines = 1) },
+        text = {
+            val s = stats
+            if (s == null) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatsRow("Total reading time", formatDuration(s.totalReadingTimeMs))
+                    StatsRow("Sessions", s.sessionCount.toString())
+                    if (s.sessionCount > 0) {
+                        StatsRow("Avg. session length", formatDuration(s.averageSessionMs))
+                        s.lastSessionMs?.let { StatsRow("Last session", formatDuration(it)) }
+                    }
+                    if (s.sessionCount == 0) {
+                        Text(
+                            "No reading sessions recorded yet.\nOpen the book to start tracking!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun StatsRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** Converts milliseconds to a human-readable string like "3h 24m" or "45m" or "< 1m". */
+private fun formatDuration(ms: Long): String {
+    if (ms <= 0L) return "< 1m"
+    val totalMinutes = ms / 60_000L
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        minutes > 0 -> "${minutes}m"
+        else -> "< 1m"
     }
 }
 

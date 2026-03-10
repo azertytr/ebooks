@@ -10,6 +10,7 @@ import com.ebooks.reader.data.db.entities.Book
 import com.ebooks.reader.data.db.entities.Bookmark
 import com.ebooks.reader.data.db.entities.FileType
 import com.ebooks.reader.data.db.entities.ReadingProgress
+import com.ebooks.reader.data.db.entities.ReadingSession
 import com.ebooks.reader.data.db.entities.ReadingStatus
 import com.ebooks.reader.data.parser.EpubParser
 import com.ebooks.reader.data.parser.ReaderTheme
@@ -197,6 +198,34 @@ class BookRepository(private val context: Context) {
 
     suspend fun saveReadingProgress(progress: ReadingProgress) =
         dao.saveReadingProgress(progress)
+
+    // ── Reading Sessions ──────────────────────────────────────────────────────
+
+    /**
+     * Saves a completed reading session.  Sessions shorter than 10 seconds are
+     * silently discarded (accidental opens, orientation changes, etc.).
+     */
+    suspend fun saveReadingSession(session: ReadingSession) = withContext(Dispatchers.IO) {
+        val durationMs = session.endTime - session.startTime
+        if (durationMs < 10_000L) return@withContext
+        dao.insertReadingSession(session)
+    }
+
+    data class ReadingStats(
+        val totalReadingTimeMs: Long,
+        val sessionCount: Int,
+        val averageSessionMs: Long,
+        val lastSessionMs: Long?   // null if no sessions yet
+    )
+
+    suspend fun getReadingStats(bookId: String): ReadingStats = withContext(Dispatchers.IO) {
+        val totalMs    = dao.getTotalReadingTimeMs(bookId)
+        val count      = dao.getSessionCount(bookId)
+        val avgMs      = if (count > 0) totalMs / count else 0L
+        val recentSess = dao.getRecentSessions(bookId)
+        val lastMs     = recentSess.firstOrNull()?.let { it.endTime - it.startTime }
+        ReadingStats(totalMs, count, avgMs, lastMs)
+    }
 
     // ── Bookmarks ─────────────────────────────────────────────────────────────
 

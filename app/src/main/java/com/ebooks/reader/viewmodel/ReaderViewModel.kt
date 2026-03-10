@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.ebooks.reader.data.db.entities.Book
 import com.ebooks.reader.data.db.entities.Bookmark
 import com.ebooks.reader.data.db.entities.ReadingProgress
+import com.ebooks.reader.data.db.entities.ReadingSession
 import com.ebooks.reader.data.db.entities.ReadingStatus
 import com.ebooks.reader.data.parser.EpubBook
 import com.ebooks.reader.data.parser.EpubChapter
@@ -74,6 +75,11 @@ class ReaderViewModel(
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
+
+    /** Wall-clock time when this ViewModel was created (= session start). */
+    private val sessionStartMs = System.currentTimeMillis()
+    /** Distinct chapter indices visited during this session. */
+    private val visitedChapters = mutableSetOf<Int>()
 
     private var autoScrollJob: Job? = null
 
@@ -146,6 +152,7 @@ class ReaderViewModel(
         if (index < 0 || index >= chapters.size) return
 
         viewModelScope.launch {
+            visitedChapters.add(index)
             _uiState.update { it.copy(isChapterLoading = true, currentChapterIndex = index, chapterError = null) }
             val chapter = chapters[index]
             val theme = buildReaderTheme()
@@ -363,5 +370,19 @@ class ReaderViewModel(
     override fun onCleared() {
         super.onCleared()
         stopAutoScroll()
+        // Persist the reading session (non-blocking; viewModelScope is still alive briefly)
+        if (bookId.isNotBlank()) {
+            viewModelScope.launch {
+                repository.saveReadingSession(
+                    ReadingSession(
+                        id = UUID.randomUUID().toString(),
+                        bookId = bookId,
+                        startTime = sessionStartMs,
+                        endTime = System.currentTimeMillis(),
+                        chaptersVisited = visitedChapters.size.coerceAtLeast(1)
+                    )
+                )
+            }
+        }
     }
 }
