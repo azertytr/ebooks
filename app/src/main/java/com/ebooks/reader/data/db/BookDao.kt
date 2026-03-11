@@ -4,6 +4,7 @@ import androidx.room.*
 import com.ebooks.reader.data.db.entities.Book
 import com.ebooks.reader.data.db.entities.Bookmark
 import com.ebooks.reader.data.db.entities.ReadingProgress
+import com.ebooks.reader.data.db.entities.ReadingSession
 import com.ebooks.reader.data.db.entities.ReadingStatus
 import kotlinx.coroutines.flow.Flow
 
@@ -35,6 +36,10 @@ interface BookDao {
 
     @Query("SELECT * FROM books WHERE filePath = :path")
     suspend fun getBookByPath(path: String): Book?
+
+    /** One-shot snapshot of all books — for background operations like cover rebuild. */
+    @Query("SELECT * FROM books")
+    suspend fun getAllBooksSnapshot(): List<Book>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBook(book: Book)
@@ -83,4 +88,24 @@ interface BookDao {
 
     @Query("DELETE FROM bookmarks WHERE bookId = :bookId")
     suspend fun deleteAllBookmarks(bookId: String)
+
+    // ── Reading Sessions ──────────────────────────────────────────────────────
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReadingSession(session: ReadingSession)
+
+    /** Total milliseconds spent reading this book across all sessions. */
+    @Query("SELECT COALESCE(SUM(endTime - startTime), 0) FROM reading_sessions WHERE bookId = :bookId")
+    suspend fun getTotalReadingTimeMs(bookId: String): Long
+
+    /** Number of completed reading sessions for this book. */
+    @Query("SELECT COUNT(*) FROM reading_sessions WHERE bookId = :bookId")
+    suspend fun getSessionCount(bookId: String): Int
+
+    /** The five most recent sessions for a book, newest first. */
+    @Query("SELECT * FROM reading_sessions WHERE bookId = :bookId ORDER BY startTime DESC LIMIT 5")
+    suspend fun getRecentSessions(bookId: String): List<ReadingSession>
+
+    @Query("DELETE FROM reading_sessions WHERE bookId = :bookId")
+    suspend fun deleteReadingSessions(bookId: String)
 }

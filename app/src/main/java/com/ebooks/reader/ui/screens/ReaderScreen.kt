@@ -1,6 +1,12 @@
 package com.ebooks.reader.ui.screens
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -29,11 +35,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.getSystemService
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ebooks.reader.ui.components.ChapterPanel
 import com.ebooks.reader.ui.components.ReaderSettingsSheet
+import com.ebooks.reader.viewmodel.OrientationLock
 import com.ebooks.reader.viewmodel.ReaderThemeOption
 import com.ebooks.reader.viewmodel.ReaderViewModel
 
@@ -47,6 +55,9 @@ fun ReaderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val activity = context as? Activity
 
     // Auto-scroll: collect ticks from ViewModel and drive WebView scrolling
     LaunchedEffect(Unit) {
@@ -65,6 +76,56 @@ fun ReaderScreen(
         }
     }
 
+    // Apply per-book screen orientation lock
+    DisposableEffect(uiState.settings.orientationLock) {
+        activity?.requestedOrientation = when (uiState.settings.orientationLock) {
+            OrientationLock.PORTRAIT   -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            OrientationLock.LANDSCAPE  -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            OrientationLock.AUTO       -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        onDispose {
+            // Restore auto-rotate when leaving the reader
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    // Tilt-to-scroll: register accelerometer when enabled
+    DisposableEffect(uiState.settings.tiltScrollEnabled) {
+        if (!uiState.settings.tiltScrollEnabled) return@DisposableEffect onDispose {}
+        val sensorManager = context.getSystemService<SensorManager>() ?: return@DisposableEffect onDispose {}
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            ?: return@DisposableEffect onDispose {}
+
+        val listener = object : SensorEventListener {
+            private var baseline: Float? = null
+
+            override fun onSensorChanged(event: SensorEvent) {
+                val tilt = -event.values[1]  // Y axis: forward tilt = positive
+                if (baseline == null) { baseline = tilt; return }
+                val delta = tilt - (baseline ?: tilt)
+                if (delta > 1.5f) {   // tilted forward → scroll down
+                    val pixels = ((delta - 1.5f) * 4).toInt().coerceIn(1, 20)
+                    webViewRef.value?.evaluateJavascript("window.scrollBy(0, $pixels)", null)
+                } else if (delta < -1.5f) {  // tilted back → scroll up
+                    val pixels = ((-delta - 1.5f) * 4).toInt().coerceIn(1, 20)
+                    webViewRef.value?.evaluateJavascript("window.scrollBy(0, -$pixels)", null)
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
+        }
+
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+        onDispose { sensorManager.unregisterListener(listener) }
+    }
+
+    // Show chapter-load failures as a dismissable snackbar (non-fatal)
+    LaunchedEffect(uiState.chapterError) {
+        val msg = uiState.chapterError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message = msg, duration = SnackbarDuration.Long)
+        viewModel.dismissChapterError()
+    }
+
     val bgColor = remember(uiState.settings.themeOption) {
         when (uiState.settings.themeOption) {
             ReaderThemeOption.LIGHT -> Color.White
@@ -74,7 +135,11 @@ fun ReaderScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = Color.Transparent
+    ) { innerPadding ->
+    Box(modifier = Modifier.fillMaxSize().background(bgColor).padding(innerPadding)) {
         when {
             uiState.error != null -> ErrorScreen(message = uiState.error!!, onBack = onBack)
             uiState.book == null -> {
@@ -176,7 +241,7 @@ fun ReaderScreen(
                 }
             }
         }
-    }
+    } // end Scaffold
 }
 
 @SuppressLint("SetJavaScriptEnabled")

@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ebooks.reader.viewmodel.FontFamily
+import com.ebooks.reader.viewmodel.OrientationLock
 import com.ebooks.reader.viewmodel.ReaderSettings
 import com.ebooks.reader.viewmodel.ReaderThemeOption
 
@@ -128,6 +129,34 @@ fun ReaderSettingsSheet(
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.width(32.dp)
                 )
+            }
+
+            // Tilt-to-scroll
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ScreenRotation, null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Tilt to Scroll")
+                }
+                Switch(checked = settings.tiltScrollEnabled, onCheckedChange = { onSettingsChanged(settings.copy(tiltScrollEnabled = it)) })
+            }
+
+            // Orientation lock
+            SectionLabel("Screen Orientation")
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OrientationLock.entries.forEach { lock ->
+                    FilterChip(
+                        selected = settings.orientationLock == lock,
+                        onClick = { onSettingsChanged(settings.copy(orientationLock = lock)) },
+                        label = {
+                            Text(when (lock) {
+                                OrientationLock.AUTO      -> "Auto"
+                                OrientationLock.PORTRAIT  -> "Portrait"
+                                OrientationLock.LANDSCAPE -> "Landscape"
+                            }, fontSize = 12.sp)
+                        }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
