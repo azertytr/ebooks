@@ -41,7 +41,11 @@ data class ReaderSettings(
     val keepScreenOn: Boolean = false,
     val isFullscreen: Boolean = false,
     val orientationLock: OrientationLock = OrientationLock.AUTO,
-    val tiltScrollEnabled: Boolean = false
+    val tiltScrollEnabled: Boolean = false,
+    /** Minutes before auto-scroll is automatically stopped. 0 = disabled. */
+    val sleepTimerMinutes: Int = 0,
+    /** Warm amber overlay intensity [0f = off … 0.5f = full]. */
+    val nightLightAlpha: Float = 0f
 )
 
 data class ReaderUiState(
@@ -82,6 +86,7 @@ class ReaderViewModel(
     private val visitedChapters = mutableSetOf<Int>()
 
     private var autoScrollJob: Job? = null
+    private var sleepTimerJob: Job? = null
 
     private val _autoScrollTick = MutableSharedFlow<Int>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val autoScrollTick: SharedFlow<Int> = _autoScrollTick.asSharedFlow()
@@ -232,12 +237,19 @@ class ReaderViewModel(
             settings.fontFamily != old.fontFamily ||
             settings.paragraphIndent != old.paragraphIndent
         val speedChanged = settings.autoScrollSpeed != old.autoScrollSpeed
+        val timerChanged = settings.sleepTimerMinutes != old.sleepTimerMinutes
 
         _uiState.update { it.copy(settings = settings) }
 
         if (visualChanged) loadChapter(_uiState.value.currentChapterIndex)
         if (speedChanged) {
             if (settings.autoScrollSpeed > 0) startAutoScroll() else stopAutoScroll()
+        }
+        if (timerChanged) {
+            sleepTimerJob?.cancel()
+            if (settings.sleepTimerMinutes > 0 && settings.autoScrollSpeed > 0) {
+                startSleepTimer(settings.sleepTimerMinutes)
+            }
         }
     }
 
@@ -280,11 +292,26 @@ class ReaderViewModel(
                 if (speed > 0) _autoScrollTick.emit(speed)
             }
         }
+        // (Re-)arm the sleep timer if one is already configured
+        val timerMins = _uiState.value.settings.sleepTimerMinutes
+        if (timerMins > 0) startSleepTimer(timerMins)
     }
 
     private fun stopAutoScroll() {
         autoScrollJob?.cancel()
         autoScrollJob = null
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+    }
+
+    private fun startSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = viewModelScope.launch {
+            delay(minutes * 60_000L)
+            // When the timer fires, turn off scroll and reset both settings in state
+            stopAutoScroll()
+            _uiState.update { it.copy(settings = it.settings.copy(autoScrollSpeed = 0, sleepTimerMinutes = 0)) }
+        }
     }
 
     fun dismissChapterError() {

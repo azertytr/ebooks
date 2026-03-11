@@ -26,13 +26,13 @@
 
 - [ ] Bookshelf view mode (3D perspective like a real bookshelf)
 - [x] Reading statistics (time read per book, pages per session)
-- [ ] Sleep timer for auto-scroll
+- [x] Sleep timer for auto-scroll
 - [ ] Text-to-speech integration
 - [ ] Share book excerpt feature
 - [ ] Cloud sync (reading progress across devices)
 - [ ] OPDS catalog support (download books from servers)
 - [ ] Custom fonts — user can add TTF/OTF files
 - [ ] Comic book (CBZ/CBR) reader with pinch-to-zoom
-- [ ] Night light / warm color filter overlay
+- [x] Night light / warm color filter overlay
 - [ ] Widget for current reading book
 - [ ] Android 13+ per-app language preferences
