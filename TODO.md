@@ -2,24 +2,24 @@
 
 ## 🔴 Critical
 
-- [ ] Generate proper PNG launcher icons (`mipmap-hdpi/`, `mipmap-xhdpi/`, etc.) — required for APK build
-- [ ] Add `gradlew` wrapper script and `gradle-wrapper.jar` — run `gradle wrapper` locally
+- [x] Generate proper PNG launcher icons (`mipmap-hdpi/`, `mipmap-xhdpi/`, etc.) — required for APK build
+- [x] Add `gradlew` wrapper script and `gradle-wrapper.jar` — run `gradle wrapper` locally
 - [ ] Test EPUB parser against malformed/unusual EPUBs (missing OPF, non-standard paths)
-- [ ] Handle `IOException` when file URI becomes invalid (moved/deleted file)
-- [ ] WebView `setWebContentsDebuggingEnabled` must be disabled in release builds
-- [ ] Validate URI permissions are taken with `takePersistableUriPermission` so files remain accessible across app restarts
+- [x] Handle `IOException` when file URI becomes invalid (moved/deleted file)
+- [x] WebView `setWebContentsDebuggingEnabled` must be disabled in release builds
+- [x] Validate URI permissions are taken with `takePersistableUriPermission` so files remain accessible across app restarts
 
 ## 🟠 Important
 
-- [ ] Add Room database migration strategy (currently version 1 only)
-- [ ] Implement in-book text search (JavaScript-based highlight in WebView)
-- [ ] Add PDF rendering screen using `android.graphics.pdf.PdfRenderer`
+- [x] Add Room database migration strategy (currently version 2 with MIGRATION_1_2)
+- [x] Implement in-book text search (JavaScript-based highlight in WebView)
+- [x] Add PDF rendering screen using `android.graphics.pdf.PdfRenderer`
 - [x] Add TXT reader screen (plain text with Compose `LazyColumn`)
-- [ ] Implement auto-scroll (JavaScript `window.scrollBy` loop via WebView)
+- [x] Implement auto-scroll (JavaScript `window.scrollBy` loop via WebView)
 - [ ] Add instrumented tests (Espresso/Compose test) for UI flows
 - [ ] Add cover image rebuild functionality (re-import covers from existing books)
 - [ ] Support FB2 format (XML-based Russian ebook format)
-- [ ] Tilt-to-scroll (using `SensorManager` accelerometer)
+- [x] Tilt-to-scroll (using `SensorManager` accelerometer)
 - [x] Screen orientation lock per-book
 
 ## 🟢 Nice to Have
