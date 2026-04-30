@@ -21,14 +21,13 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 enum class ReaderThemeOption { LIGHT, DARK, SEPIA, NIGHT }
+enum class OrientationLock { UNSPECIFIED, PORTRAIT, LANDSCAPE }
 enum class FontFamily(val css: String, val displayName: String) {
     SERIF("Georgia, serif", "Georgia"),
     SANS_SERIF("'Roboto', sans-serif", "Roboto"),
     MONO("'Courier New', monospace", "Mono"),
     OPENTYPE("'OpenDyslexic', serif", "Dyslexic");
 }
-
-enum class OrientationLock { AUTO, PORTRAIT, LANDSCAPE }
 
 data class ReaderSettings(
     val themeOption: ReaderThemeOption = ReaderThemeOption.LIGHT,
@@ -40,7 +39,7 @@ data class ReaderSettings(
     val autoScrollSpeed: Int = 0, // 0 = off, 1-10 speed
     val keepScreenOn: Boolean = false,
     val isFullscreen: Boolean = false,
-    val orientationLock: OrientationLock = OrientationLock.AUTO,
+    val orientationLock: OrientationLock = OrientationLock.UNSPECIFIED,
     val tiltScrollEnabled: Boolean = false
 )
 
