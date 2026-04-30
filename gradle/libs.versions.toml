@@ -13,7 +13,7 @@ room = "2.8.4"
 navigation = "2.9.8"
 coil = "2.7.0"
 coroutinesTest = "1.10.2"
-iconsExtended = "1.6.8"
+iconsExtended = "1.7.8"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
