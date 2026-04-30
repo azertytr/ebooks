@@ -113,6 +113,22 @@ fun ReaderSettingsSheet(
                 Switch(checked = settings.keepScreenOn, onCheckedChange = { onSettingsChanged(settings.copy(keepScreenOn = it)) })
             }
 
+            // Orientation lock
+            SectionLabel("Screen Orientation")
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    OrientationLock.UNSPECIFIED to "Auto",
+                    OrientationLock.PORTRAIT   to "Portrait",
+                    OrientationLock.LANDSCAPE  to "Landscape"
+                ).forEach { (lock, label) ->
+                    FilterChip(
+                        selected = settings.orientationLock == lock,
+                        onClick = { onSettingsChanged(settings.copy(orientationLock = lock)) },
+                        label = { Text(label, fontSize = 12.sp) }
+                    )
+                }
+            }
+
             // Auto-scroll speed
             SectionLabel("Auto-scroll Speed")
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
