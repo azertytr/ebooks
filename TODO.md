@@ -18,7 +18,7 @@
 - [x] Implement auto-scroll (JavaScript `window.scrollBy` loop via WebView)
 - [x] Add instrumented tests (Espresso/Compose test) for UI flows
 - [ ] Add cover image rebuild functionality (re-import covers from existing books)
-- [ ] Support FB2 format (XML-based Russian ebook format)
+- [x] Support FB2 format (XML-based Russian ebook format)
 - [x] Tilt-to-scroll (using `SensorManager` accelerometer)
 - [x] Screen orientation lock per-book
 
