@@ -4,7 +4,7 @@
 
 - [x] Generate proper PNG launcher icons (`mipmap-hdpi/`, `mipmap-xhdpi/`, etc.) — required for APK build
 - [x] Add `gradlew` wrapper script and `gradle-wrapper.jar` — run `gradle wrapper` locally
-- [ ] Test EPUB parser against malformed/unusual EPUBs (missing OPF, non-standard paths)
+- [x] Test EPUB parser against malformed/unusual EPUBs (missing OPF, non-standard paths)
 - [x] Handle `IOException` when file URI becomes invalid (moved/deleted file)
 - [x] WebView `setWebContentsDebuggingEnabled` must be disabled in release builds
 - [x] Validate URI permissions are taken with `takePersistableUriPermission` so files remain accessible across app restarts
@@ -16,7 +16,7 @@
 - [x] Add PDF rendering screen using `android.graphics.pdf.PdfRenderer`
 - [x] Add TXT reader screen (plain text with Compose `LazyColumn`)
 - [x] Implement auto-scroll (JavaScript `window.scrollBy` loop via WebView)
-- [ ] Add instrumented tests (Espresso/Compose test) for UI flows
+- [x] Add instrumented tests (Espresso/Compose test) for UI flows
 - [ ] Add cover image rebuild functionality (re-import covers from existing books)
 - [ ] Support FB2 format (XML-based Russian ebook format)
 - [x] Tilt-to-scroll (using `SensorManager` accelerometer)
