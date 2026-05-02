@@ -178,6 +178,15 @@ fun ReaderScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
+                    // Night-light warm overlay — above WebView content, below all controls
+                    if (uiState.settings.nightLightAlpha > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFFFF8C00).copy(alpha = uiState.settings.nightLightAlpha))
+                        )
+                    }
+
                     if (uiState.isChapterLoading) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopStart))
                     }

@@ -157,6 +157,38 @@ fun ReaderSettingsSheet(
                 Switch(checked = settings.tiltScrollEnabled, onCheckedChange = { onSettingsChanged(settings.copy(tiltScrollEnabled = it)) })
             }
 
+            // Sleep timer
+            SectionLabel("Sleep Timer (auto-scroll)")
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(0 to "Off", 15 to "15m", 30 to "30m", 45 to "45m", 60 to "1h").forEach { (mins, label) ->
+                    FilterChip(
+                        selected = settings.sleepTimerMinutes == mins,
+                        onClick = { onSettingsChanged(settings.copy(sleepTimerMinutes = mins)) },
+                        label = { Text(label, fontSize = 12.sp) }
+                    )
+                }
+            }
+
+            // Night light
+            SectionLabel("Night Light")
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.WbIncandescent, null, modifier = Modifier.size(20.dp))
+                Slider(
+                    value = settings.nightLightAlpha,
+                    onValueChange = { onSettingsChanged(settings.copy(nightLightAlpha = it)) },
+                    valueRange = 0f..0.5f,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    if (settings.nightLightAlpha == 0f) "Off" else "${(settings.nightLightAlpha * 200).toInt()}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.width(36.dp)
+                )
+            }
+
             // Orientation lock
             SectionLabel("Screen Orientation")
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
