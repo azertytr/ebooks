@@ -49,6 +49,8 @@ fun LibraryScreen(
     var showFilterSheet by remember { mutableStateOf(false) }
     var showMenuFor by remember { mutableStateOf<Book?>(null) }
     var showStatsFor by remember { mutableStateOf<Book?>(null) }
+    var showSettingsMenu by remember { mutableStateOf(false) }
+    var isRebuildingCovers by remember { mutableStateOf(false) }
     var searchActive by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(
@@ -69,6 +71,7 @@ fun LibraryScreen(
                 onSearchClose = { searchActive = false; viewModel.setSearchQuery("") },
                 onSort = { showSortSheet = true },
                 onFilter = { showFilterSheet = true },
+                onSettings = { showSettingsMenu = true },
                 onViewModeToggle = {
                     viewModel.setViewMode(
                         when (uiState.viewMode) {
@@ -197,6 +200,18 @@ fun LibraryScreen(
             onDismiss = { showStatsFor = null }
         )
     }
+
+    if (showSettingsMenu) {
+        SettingsDialog(
+            isRebuildingCovers = isRebuildingCovers,
+            onRebuildCovers = {
+                isRebuildingCovers = true
+                viewModel.rebuildCovers()
+                isRebuildingCovers = false
+            },
+            onDismiss = { showSettingsMenu = false }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -210,6 +225,7 @@ private fun LibraryTopBar(
     onSearchClose: () -> Unit,
     onSort: () -> Unit,
     onFilter: () -> Unit,
+    onSettings: () -> Unit,
     onViewModeToggle: () -> Unit,
     scrollBehavior: TopAppBarScrollBehavior
 ) {
@@ -254,6 +270,7 @@ private fun LibraryTopBar(
                         }, "Change view"
                     )
                 }
+                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
             },
             scrollBehavior = scrollBehavior
         )
@@ -418,6 +435,45 @@ private fun formatDuration(ms: Long): String {
         minutes > 0 -> "${minutes}m"
         else -> "< 1m"
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsDialog(
+    isRebuildingCovers: Boolean,
+    onRebuildCovers: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Library Settings") },
+        text = {
+            Column {
+                Text("Rebuild Cover Images", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Re-import cover images from all EPUB books in your library.", style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onRebuildCovers,
+                    enabled = !isRebuildingCovers,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isRebuildingCovers) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Rebuilding...")
+                    } else {
+                        Text("Rebuild Covers")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+    )
 }
 
 @Composable

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalActivity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -58,6 +59,18 @@ fun ReaderScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val activity = context as? Activity
+
+    // Orientation lock: apply per-book orientation preference and restore on exit
+    DisposableEffect(uiState.settings.orientationLock) {
+        activity?.requestedOrientation = when (uiState.settings.orientationLock) {
+            OrientationLock.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            OrientationLock.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            OrientationLock.UNSPECIFIED -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
 
     // Auto-scroll: collect ticks from ViewModel and drive WebView scrolling
     LaunchedEffect(Unit) {
