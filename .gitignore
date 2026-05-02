@@ -61,3 +61,13 @@ coverage/
 # WhatsApp screenshots (reference only)
 WhatsApp\ Image\ *.jpeg
 WhatsApp\ Image\ *.jpg
+
+# APK storage and build outputs
+apk/*.apk
+apk/*.aab
+release/*.apk
+release/*.aab
+
+# Build artifacts to exclude (already in .gitignore, but explicit here)
+*.apk
+*.aab
