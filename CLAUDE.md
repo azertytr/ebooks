@@ -80,6 +80,19 @@ SECURITY.md    # Security policy
 
 ## Build commands
 
+### Docker (Recommended)
+
+```bash
+# Build release APK in isolated Docker environment
+./scripts/build-apk-docker.sh              # default: v1.0.0
+./scripts/build-apk-docker.sh 1.2.3        # custom version: v1.2.3
+./scripts/build-apk-docker.sh 1.2.3 42     # with code: v1.2.3, code=42
+```
+
+**Advantages:** No SDK installation needed, reproducible, matches CI exactly, works on any OS.
+
+### Local Gradle
+
 ```bash
 # Debug APK — app/build/outputs/apk/debug/app-debug.apk
 ./gradlew assembleDebug
@@ -97,8 +110,14 @@ SECURITY.md    # Security policy
 ./gradlew lint test assembleDebug
 ```
 
+**Advantages:** Faster incremental builds, better IDE integration, local debugging.
+
+---
+
 Gradle 8.7 is pinned via the wrapper. **Do not upgrade** without updating
 `gradle-wrapper.properties` and verifying AGP compatibility.
+
+Docker builds use `eclipse-temurin:17` base image with Android SDK 34 pre-installed.
 
 ---
 
