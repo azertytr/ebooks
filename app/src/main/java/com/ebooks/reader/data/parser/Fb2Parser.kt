@@ -2,13 +2,14 @@ package com.ebooks.reader.data.parser
 
 import android.content.Context
 import android.net.Uri
+import android.util.Base64
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.InputStream
 
 /**
  * Parser for FB2 (FictionBook 2.0) format — XML-based ebook format popular in Russia.
- * Extracts metadata, cover image, and converts the body to HTML in a single stream pass.
+ * Extracts metadata and converts FB2 content to HTML for display.
  */
 class Fb2Parser(private val context: Context) {
 
@@ -21,113 +22,88 @@ class Fb2Parser(private val context: Context) {
     )
 
     fun parse(uri: Uri): Fb2Book? = runCatching {
-        context.contentResolver.openInputStream(uri)?.use { parseFb2(it) }
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            val parser = newPullParser(stream)
+            val metadata = parseFb2Metadata(parser)
+            val coverImageBase64 = extractCoverImage(parser)
+            val htmlContent = parseFb2Body(parser)
+
+            Fb2Book(
+                title = metadata["title"] ?: "Unknown Title",
+                author = metadata["author"] ?: "Unknown Author",
+                description = metadata["annotation"],
+                coverImageBase64 = coverImageBase64,
+                htmlContent = htmlContent
+            )
+        }
     }.getOrNull()
 
-    private fun parseFb2(stream: InputStream): Fb2Book {
-        val parser = newPullParser(stream)
-
-        // Context flags
+    private fun parseFb2Metadata(parser: XmlPullParser): Map<String, String> {
+        val metadata = mutableMapOf<String, String>()
+        var eventType = parser.eventType
         var inDescription = false
         var inTitleInfo = false
         var inAuthor = false
-        var inAnnotation = false
-        var inCoverPage = false
-        var inBody = false
-        var inBinary = false
-        var currentTag = ""
-
-        // Metadata accumulators
-        var title = "Unknown Title"
-        var author = "Unknown Author"
         var firstName = ""
         var lastName = ""
-        var annotation = ""
-        var coverImageId: String? = null
+        var inAnnotation = false
+        var annotationText = ""
 
-        // Binary blobs (base64-encoded images embedded in the FB2)
-        var currentBinaryId = ""
-        val binaries = mutableMapOf<String, StringBuilder>()
-
-        // HTML body output
-        val html = StringBuilder("<html><head><meta charset='UTF-8'/></head><body>")
-
-        var eventType = parser.eventType
         while (eventType != XmlPullParser.END_DOCUMENT) {
             when (eventType) {
                 XmlPullParser.START_TAG -> {
-                    currentTag = parser.name ?: ""
-                    when (currentTag) {
+                    when (parser.name) {
+                        "title-info" -> inTitleInfo = true
                         "description" -> inDescription = true
-                        "title-info"  -> if (inDescription) inTitleInfo = true
-                        "author"      -> if (inTitleInfo) inAuthor = true
-                        "annotation"  -> if (inTitleInfo) inAnnotation = true
-                        "coverpage"   -> if (inDescription) inCoverPage = true
-                        "image" -> when {
-                            inCoverPage -> {
-                                val href = parser.getAttributeValue(null, "l:href")
-                                    ?: parser.getAttributeValue(null, "href")
-                                coverImageId = href?.trimStart('#')
-                            }
-                            inBody -> {
-                                val href = (parser.getAttributeValue(null, "l:href")
-                                    ?: parser.getAttributeValue(null, "href"))
-                                    ?.trimStart('#')
-                                if (href != null) html.append("<img data-fb2-src='$href'/>")
+                        "book-title" -> {
+                            parser.next()
+                            if (parser.eventType == XmlPullParser.TEXT) {
+                                metadata["title"] = parser.text ?: ""
                             }
                         }
-                        "body"       -> inBody = true
-                        "section"    -> if (inBody) html.append("<div class='section'>")
-                        "title"      -> if (inBody) html.append("<h2>")
-                        "p"          -> if (inBody) html.append("<p>")
-                        "emphasis"   -> if (inBody) html.append("<em>")
-                        "strong"     -> if (inBody) html.append("<strong>")
-                        "empty-line" -> if (inBody) html.append("<br/>")
-                        "binary" -> {
-                            inBinary = true
-                            currentBinaryId = parser.getAttributeValue(null, "id") ?: ""
+                        "author" -> inAuthor = true
+                        "first-name" -> {
+                            if (inAuthor) {
+                                parser.next()
+                                if (parser.eventType == XmlPullParser.TEXT) {
+                                    firstName = parser.text ?: ""
+                                }
+                            }
                         }
+                        "last-name" -> {
+                            if (inAuthor) {
+                                parser.next()
+                                if (parser.eventType == XmlPullParser.TEXT) {
+                                    lastName = parser.text ?: ""
+                                }
+                            }
+                        }
+                        "annotation" -> inAnnotation = true
                     }
                 }
-
                 XmlPullParser.END_TAG -> {
-                    val tag = parser.name ?: ""
-                    when (tag) {
+                    when (parser.name) {
+                        "title-info" -> inTitleInfo = false
                         "description" -> inDescription = false
-                        "title-info"  -> inTitleInfo = false
                         "author" -> {
-                            if (inTitleInfo) {
-                                inAuthor = false
-                                val full = "$firstName $lastName".trim()
-                                if (full.isNotBlank()) author = full
-                                firstName = ""; lastName = ""
+                            inAuthor = false
+                            if (firstName.isNotBlank() || lastName.isNotBlank()) {
+                                metadata["author"] = "$firstName $lastName".trim()
+                            }
+                            firstName = ""
+                            lastName = ""
+                        }
+                        "annotation" -> {
+                            inAnnotation = false
+                            if (annotationText.isNotBlank()) {
+                                metadata["annotation"] = annotationText.trim()
                             }
                         }
-                        "annotation" -> inAnnotation = false
-                        "coverpage"  -> inCoverPage = false
-                        "body"       -> inBody = false
-                        "section"    -> if (inBody) html.append("</div>")
-                        "title"      -> if (inBody) html.append("</h2>")
-                        "p"          -> if (inBody) html.append("</p>")
-                        "emphasis"   -> if (inBody) html.append("</em>")
-                        "strong"     -> if (inBody) html.append("</strong>")
-                        "binary"     -> { inBinary = false; currentBinaryId = "" }
                     }
-                    currentTag = ""
                 }
-
                 XmlPullParser.TEXT -> {
-                    val text = parser.text ?: ""
-                    when {
-                        inBinary && currentBinaryId.isNotBlank() ->
-                            binaries.getOrPut(currentBinaryId) { StringBuilder() }.append(text)
-                        inAnnotation -> annotation += text
-                        inAuthor && currentTag == "first-name" -> firstName = text.trim()
-                        inAuthor && currentTag == "last-name"  -> lastName = text.trim()
-                        inTitleInfo && currentTag == "book-title" && text.isNotBlank() ->
-                            title = text.trim()
-                        inBody && text.isNotBlank() ->
-                            html.append(text.escapeHtml())
+                    if (inAnnotation && parser.text?.isNotBlank() == true) {
+                        annotationText += parser.text + "\n"
                     }
                 }
             }
@@ -135,21 +111,86 @@ class Fb2Parser(private val context: Context) {
             eventType = parser.eventType
         }
 
-        html.append("</body></html>")
-
-        return Fb2Book(
-            title = title,
-            author = author,
-            description = annotation.trim().ifBlank { null },
-            coverImageBase64 = coverImageId?.let { binaries[it]?.toString()?.trim() },
-            htmlContent = html.toString()
-        )
+        return metadata
     }
 
-    private fun String.escapeHtml(): String =
-        replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    private fun extractCoverImage(parser: XmlPullParser): String? {
+        return runCatching {
+            // Reset parser to beginning
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        if (parser.name == "coverpage") {
+                            var foundImage = false
+                            while (!foundImage && eventType != XmlPullParser.END_DOCUMENT) {
+                                parser.next()
+                                eventType = parser.eventType
+                                if (eventType == XmlPullParser.START_TAG && parser.name == "image") {
+                                    val href = parser.getAttributeValue(null, "l:href")
+                                        ?: parser.getAttributeValue(null, "href")
+                                    return@runCatching href
+                                }
+                                if (eventType == XmlPullParser.END_TAG && parser.name == "coverpage") {
+                                    foundImage = true
+                                }
+                            }
+                        }
+                    }
+                }
+                parser.next()
+                eventType = parser.eventType
+            }
+            null
+        }.getOrNull()
+    }
 
-    private fun newPullParser(stream: InputStream): XmlPullParser =
-        XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }
-            .newPullParser().also { it.setInput(stream, "UTF-8") }
+    private fun parseFb2Body(parser: XmlPullParser): String {
+        val html = StringBuilder("<html><head><meta charset='UTF-8'/></head><body>")
+        var eventType = parser.eventType
+        var foundBody = false
+
+        while (eventType != XmlPullParser.END_DOCUMENT) {
+            when (eventType) {
+                XmlPullParser.START_TAG -> {
+                    when (parser.name) {
+                        "body" -> foundBody = true
+                        "section" -> if (foundBody) html.append("<div class='section'>")
+                        "title" -> if (foundBody) html.append("<h2>")
+                        "p" -> if (foundBody) html.append("<p>")
+                        "emphasis" -> if (foundBody) html.append("<em>")
+                        "strong" -> if (foundBody) html.append("<strong>")
+                        "empty-line" -> if (foundBody) html.append("<br/>")
+                    }
+                }
+                XmlPullParser.END_TAG -> {
+                    when (parser.name) {
+                        "body" -> if (foundBody) return html.append("</body></html>").toString()
+                        "section" -> if (foundBody) html.append("</div>")
+                        "title" -> if (foundBody) html.append("</h2>")
+                        "p" -> if (foundBody) html.append("</p>")
+                        "emphasis" -> if (foundBody) html.append("</em>")
+                        "strong" -> if (foundBody) html.append("</strong>")
+                    }
+                }
+                XmlPullParser.TEXT -> {
+                    if (foundBody && parser.text?.isNotBlank() == true) {
+                        html.append(parser.text?.replace("&", "&amp;")?.replace("<", "&lt;")?.replace(">", "&gt;"))
+                    }
+                }
+            }
+            parser.next()
+            eventType = parser.eventType
+        }
+
+        return html.append("</body></html>").toString()
+    }
+
+    private fun newPullParser(stream: InputStream): XmlPullParser {
+        val factory = XmlPullParserFactory.newInstance()
+        factory.isNamespaceAware = true
+        val parser = factory.newPullParser()
+        parser.setInput(stream, "UTF-8")
+        return parser
+    }
 }
