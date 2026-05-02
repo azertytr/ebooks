@@ -39,7 +39,12 @@ data class ReaderSettings(
     val autoScrollSpeed: Int = 0, // 0 = off, 1-10 speed
     val keepScreenOn: Boolean = false,
     val isFullscreen: Boolean = false,
-    val orientationLock: OrientationLock = OrientationLock.UNSPECIFIED
+    val orientationLock: OrientationLock = OrientationLock.AUTO,
+    val tiltScrollEnabled: Boolean = false,
+    /** Minutes before auto-scroll is automatically stopped. 0 = disabled. */
+    val sleepTimerMinutes: Int = 0,
+    /** Warm amber overlay intensity [0f = off … 0.5f = full]. */
+    val nightLightAlpha: Float = 0f
 )
 
 data class ReaderUiState(
