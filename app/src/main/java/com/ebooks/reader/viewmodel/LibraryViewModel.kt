@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.ebooks.reader.data.db.entities.Book
 import com.ebooks.reader.data.db.entities.ReadingStatus
 import com.ebooks.reader.data.repository.BookRepository
+import com.ebooks.reader.data.repository.BookRepository.ReadingStats
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -124,4 +125,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun updateReadingStatus(bookId: String, status: ReadingStatus) {
         viewModelScope.launch { repository.updateReadingStatus(bookId, status) }
     }
+
+    fun rebuildCovers() {
+        viewModelScope.launch { repository.rebuildCovers() }
+    }
+
+    /** Returns reading statistics for a book; suitable for one-shot UI display. */
+    suspend fun getReadingStats(bookId: String): ReadingStats = repository.getReadingStats(bookId)
 }

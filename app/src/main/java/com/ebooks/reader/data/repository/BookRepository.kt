@@ -10,7 +10,10 @@ import com.ebooks.reader.data.db.entities.Book
 import com.ebooks.reader.data.db.entities.Bookmark
 import com.ebooks.reader.data.db.entities.FileType
 import com.ebooks.reader.data.db.entities.ReadingProgress
+import com.ebooks.reader.data.db.entities.ReadingSession
 import com.ebooks.reader.data.db.entities.ReadingStatus
+import com.ebooks.reader.data.parser.EpubBook
+import com.ebooks.reader.data.parser.EpubChapter
 import com.ebooks.reader.data.parser.EpubParser
 import com.ebooks.reader.data.parser.ReaderTheme
 import kotlinx.coroutines.Dispatchers
@@ -144,9 +147,25 @@ class BookRepository(private val context: Context) {
         coverFile.absolutePath
     }.getOrNull()
 
-    fun rebuildCovers() {
-        // Trigger re-import of cover images for all books
-        // Useful if cover files were deleted
+    /**
+     * Re-parses the source file of every EPUB book and regenerates its cover image.
+     * Useful after the covers directory is cleared or migrated.
+     * Runs on the IO dispatcher; call from a coroutine scope.
+     */
+    suspend fun rebuildCovers() = withContext(Dispatchers.IO) {
+        val allBooks = dao.getAllBooksSnapshot()
+        for (book in allBooks) {
+            if (book.fileType != FileType.EPUB.extension) continue
+            try {
+                val uri = resolveUri(book.filePath)
+                val epubBook = epubParser.parse(uri) ?: continue
+                val coverBytes = epubBook.coverBytes ?: continue
+                val newCoverPath = saveCover(book.id, coverBytes) ?: continue
+                dao.updateBook(book.copy(coverPath = newCoverPath))
+            } catch (_: Exception) {
+                // Skip books whose file is no longer accessible
+            }
+        }
     }
 
     // ── Book Updates ──────────────────────────────────────────────────────────
@@ -182,6 +201,34 @@ class BookRepository(private val context: Context) {
     suspend fun saveReadingProgress(progress: ReadingProgress) =
         dao.saveReadingProgress(progress)
 
+    // ── Reading Sessions ──────────────────────────────────────────────────────
+
+    /**
+     * Saves a completed reading session.  Sessions shorter than 10 seconds are
+     * silently discarded (accidental opens, orientation changes, etc.).
+     */
+    suspend fun saveReadingSession(session: ReadingSession) = withContext(Dispatchers.IO) {
+        val durationMs = session.endTime - session.startTime
+        if (durationMs < 10_000L) return@withContext
+        dao.insertReadingSession(session)
+    }
+
+    data class ReadingStats(
+        val totalReadingTimeMs: Long,
+        val sessionCount: Int,
+        val averageSessionMs: Long,
+        val lastSessionMs: Long?   // null if no sessions yet
+    )
+
+    suspend fun getReadingStats(bookId: String): ReadingStats = withContext(Dispatchers.IO) {
+        val totalMs    = dao.getTotalReadingTimeMs(bookId)
+        val count      = dao.getSessionCount(bookId)
+        val avgMs      = if (count > 0) totalMs / count else 0L
+        val recentSess = dao.getRecentSessions(bookId)
+        val lastMs     = recentSess.firstOrNull()?.let { it.endTime - it.startTime }
+        ReadingStats(totalMs, count, avgMs, lastMs)
+    }
+
     // ── Bookmarks ─────────────────────────────────────────────────────────────
 
     fun getBookmarks(bookId: String): Flow<List<Bookmark>> = dao.getBookmarks(bookId)
@@ -201,7 +248,7 @@ class BookRepository(private val context: Context) {
         withContext(Dispatchers.IO) {
             val book = dao.getBookById(bookId) ?: return@withContext null
             when (book.fileType) {
-                "txt", "fb2" -> {
+                FileType.TXT.extension, FileType.FB2.extension -> {
                     val uri = resolveUri(book.filePath)
                     val text = try {
                         context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
@@ -213,17 +260,17 @@ class BookRepository(private val context: Context) {
         }
 
     // Accept the already-fetched Book to avoid an extra DB round-trip
-    suspend fun parseEpubBook(book: Book): com.ebooks.reader.data.parser.EpubBook? =
+    suspend fun parseEpubBook(book: Book): EpubBook? =
         withContext(Dispatchers.IO) {
             when (book.fileType) {
-                "txt", "fb2" -> com.ebooks.reader.data.parser.EpubBook(
+                FileType.TXT.extension, FileType.FB2.extension -> EpubBook(
                     title = book.title,
                     author = book.author,
                     description = null,
                     publisher = null,
                     language = null,
                     coverBytes = null,
-                    chapters = listOf(com.ebooks.reader.data.parser.EpubChapter(0, book.title, "text://content"))
+                    chapters = listOf(EpubChapter(0, book.title, "text://content"))
                 )
                 else -> epubParser.parse(resolveUri(book.filePath))
             }

@@ -13,7 +13,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ebooks.reader.ui.screens.LibraryScreen
+import com.ebooks.reader.ui.screens.PdfReaderScreen
 import com.ebooks.reader.ui.screens.ReaderScreen
+import com.ebooks.reader.ui.screens.TxtReaderScreen
+import com.ebooks.reader.ui.screens.Fb2ReaderScreen
 import com.ebooks.reader.ui.theme.EbookReaderTheme
 
 class MainActivity : ComponentActivity() {
@@ -33,8 +36,13 @@ class MainActivity : ComponentActivity() {
                     ) {
                         composable("library") {
                             LibraryScreen(
-                                onOpenBook = { bookId ->
-                                    navController.navigate("reader/$bookId")
+                                onOpenBook = { bookId, fileType ->
+                                    when (fileType) {
+                                        "pdf" -> navController.navigate("pdf_reader/$bookId")
+                                        "txt" -> navController.navigate("txt_reader/$bookId")
+                                        "fb2" -> navController.navigate("fb2_reader/$bookId")
+                                        else  -> navController.navigate("reader/$bookId")
+                                    }
                                 }
                             )
                         }
@@ -47,6 +55,45 @@ class MainActivity : ComponentActivity() {
                         ) { backStackEntry ->
                             val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
                             ReaderScreen(
+                                bookId = bookId,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable(
+                            route = "pdf_reader/{bookId}",
+                            arguments = listOf(
+                                navArgument("bookId") { type = NavType.StringType }
+                            )
+                        ) { backStackEntry ->
+                            val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
+                            PdfReaderScreen(
+                                bookId = bookId,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable(
+                            route = "txt_reader/{bookId}",
+                            arguments = listOf(
+                                navArgument("bookId") { type = NavType.StringType }
+                            )
+                        ) { backStackEntry ->
+                            val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
+                            TxtReaderScreen(
+                                bookId = bookId,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable(
+                            route = "fb2_reader/{bookId}",
+                            arguments = listOf(
+                                navArgument("bookId") { type = NavType.StringType }
+                            )
+                        ) { backStackEntry ->
+                            val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
+                            Fb2ReaderScreen(
                                 bookId = bookId,
                                 onBack = { navController.popBackStack() }
                             )

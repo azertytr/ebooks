@@ -2,12 +2,12 @@
 
 ## 🔴 Critical
 
-- [ ] Generate proper PNG launcher icons (`mipmap-hdpi/`, `mipmap-xhdpi/`, etc.) — required for APK build
-- [ ] Add `gradlew` wrapper script and `gradle-wrapper.jar` — run `gradle wrapper` locally
-- [ ] Test EPUB parser against malformed/unusual EPUBs (missing OPF, non-standard paths)
-- [ ] Handle `IOException` when file URI becomes invalid (moved/deleted file)
-- [ ] WebView `setWebContentsDebuggingEnabled` must be disabled in release builds
-- [ ] Validate URI permissions are taken with `takePersistableUriPermission` so files remain accessible across app restarts
+- [x] Generate proper PNG launcher icons (`mipmap-hdpi/`, `mipmap-xhdpi/`, etc.) — required for APK build
+- [x] Add `gradlew` wrapper script and `gradle-wrapper.jar` — run `gradle wrapper` locally
+- [x] Test EPUB parser against malformed/unusual EPUBs (missing OPF, non-standard paths)
+- [x] Handle `IOException` when file URI becomes invalid (moved/deleted file)
+- [x] WebView `setWebContentsDebuggingEnabled` must be disabled in release builds
+- [x] Validate URI permissions are taken with `takePersistableUriPermission` so files remain accessible across app restarts
 
 ## 🟠 Important
 
@@ -25,14 +25,14 @@
 ## 🟢 Nice to Have
 
 - [ ] Bookshelf view mode (3D perspective like a real bookshelf)
-- [ ] Reading statistics (time read per book, pages per session)
-- [ ] Sleep timer for auto-scroll
+- [x] Reading statistics (time read per book, pages per session)
+- [x] Sleep timer for auto-scroll
 - [ ] Text-to-speech integration
 - [ ] Share book excerpt feature
 - [ ] Cloud sync (reading progress across devices)
 - [ ] OPDS catalog support (download books from servers)
 - [ ] Custom fonts — user can add TTF/OTF files
 - [ ] Comic book (CBZ/CBR) reader with pinch-to-zoom
-- [ ] Night light / warm color filter overlay
+- [x] Night light / warm color filter overlay
 - [ ] Widget for current reading book
 - [ ] Android 13+ per-app language preferences

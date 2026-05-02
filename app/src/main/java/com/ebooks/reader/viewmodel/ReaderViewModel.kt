@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.ebooks.reader.data.db.entities.Book
 import com.ebooks.reader.data.db.entities.Bookmark
 import com.ebooks.reader.data.db.entities.ReadingProgress
+import com.ebooks.reader.data.db.entities.ReadingSession
 import com.ebooks.reader.data.db.entities.ReadingStatus
 import com.ebooks.reader.data.parser.EpubBook
 import com.ebooks.reader.data.parser.EpubChapter
@@ -56,7 +57,10 @@ data class ReaderUiState(
     val isSearchVisible: Boolean = false,
     val searchQuery: String = "",
     val settings: ReaderSettings = ReaderSettings(),
-    val error: String? = null
+    /** Fatal error shown when the book cannot be loaded at all. */
+    val error: String? = null,
+    /** Non-fatal error shown as a snackbar when a single chapter fails to load. */
+    val chapterError: String? = null
 )
 
 class ReaderViewModel(
@@ -70,7 +74,13 @@ class ReaderViewModel(
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
+    /** Wall-clock time when this ViewModel was created (= session start). */
+    private val sessionStartMs = System.currentTimeMillis()
+    /** Distinct chapter indices visited during this session. */
+    private val visitedChapters = mutableSetOf<Int>()
+
     private var autoScrollJob: Job? = null
+    private var sleepTimerJob: Job? = null
 
     private val _autoScrollTick = MutableSharedFlow<Int>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val autoScrollTick: SharedFlow<Int> = _autoScrollTick.asSharedFlow()
@@ -98,7 +108,15 @@ class ReaderViewModel(
                 _uiState.update { it.copy(error = "Book not found") }
                 return@launch
             }
-            val epubBook = repository.parseEpubBook(book)
+            val epubBook = try {
+                repository.parseEpubBook(book)
+            } catch (_: java.io.IOException) {
+                _uiState.update { it.copy(error = "Could not open book file. It may have been moved or deleted.") }
+                return@launch
+            } catch (_: Exception) {
+                _uiState.update { it.copy(error = "Failed to parse book file.") }
+                return@launch
+            }
             val progress = repository.getReadingProgress(bookId)
             val chapters = epubBook?.chapters ?: emptyList()
             val startIndex = progress?.chapterIndex?.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)) ?: 0
@@ -133,15 +151,24 @@ class ReaderViewModel(
         if (index < 0 || index >= chapters.size) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isChapterLoading = true, currentChapterIndex = index) }
+            visitedChapters.add(index)
+            _uiState.update { it.copy(isChapterLoading = true, currentChapterIndex = index, chapterError = null) }
             val chapter = chapters[index]
             val theme = buildReaderTheme()
             val html = repository.getChapterHtml(bookId, chapter.href, theme)
-            _uiState.update { it.copy(
-                currentChapterHtml = html,
-                isChapterLoading = false,
-                showChapterPanel = false
-            )}
+            if (html == null) {
+                _uiState.update { it.copy(
+                    isChapterLoading = false,
+                    chapterError = "Could not load chapter. The file may have been moved or deleted."
+                )}
+            } else {
+                _uiState.update { it.copy(
+                    currentChapterHtml = html,
+                    isChapterLoading = false,
+                    showChapterPanel = false,
+                    chapterError = null
+                )}
+            }
         }
     }
 
@@ -204,12 +231,19 @@ class ReaderViewModel(
             settings.fontFamily != old.fontFamily ||
             settings.paragraphIndent != old.paragraphIndent
         val speedChanged = settings.autoScrollSpeed != old.autoScrollSpeed
+        val timerChanged = settings.sleepTimerMinutes != old.sleepTimerMinutes
 
         _uiState.update { it.copy(settings = settings) }
 
         if (visualChanged) loadChapter(_uiState.value.currentChapterIndex)
         if (speedChanged) {
             if (settings.autoScrollSpeed > 0) startAutoScroll() else stopAutoScroll()
+        }
+        if (timerChanged) {
+            sleepTimerJob?.cancel()
+            if (settings.sleepTimerMinutes > 0 && settings.autoScrollSpeed > 0) {
+                startSleepTimer(settings.sleepTimerMinutes)
+            }
         }
     }
 
@@ -252,11 +286,30 @@ class ReaderViewModel(
                 if (speed > 0) _autoScrollTick.emit(speed)
             }
         }
+        // (Re-)arm the sleep timer if one is already configured
+        val timerMins = _uiState.value.settings.sleepTimerMinutes
+        if (timerMins > 0) startSleepTimer(timerMins)
     }
 
     private fun stopAutoScroll() {
         autoScrollJob?.cancel()
         autoScrollJob = null
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+    }
+
+    private fun startSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = viewModelScope.launch {
+            delay(minutes * 60_000L)
+            // When the timer fires, turn off scroll and reset both settings in state
+            stopAutoScroll()
+            _uiState.update { it.copy(settings = it.settings.copy(autoScrollSpeed = 0, sleepTimerMinutes = 0)) }
+        }
+    }
+
+    fun dismissChapterError() {
+        _uiState.update { it.copy(chapterError = null) }
     }
 
     fun toggleSearch() {
@@ -338,5 +391,19 @@ class ReaderViewModel(
     override fun onCleared() {
         super.onCleared()
         stopAutoScroll()
+        // Persist the reading session (non-blocking; viewModelScope is still alive briefly)
+        if (bookId.isNotBlank()) {
+            viewModelScope.launch {
+                repository.saveReadingSession(
+                    ReadingSession(
+                        id = UUID.randomUUID().toString(),
+                        bookId = bookId,
+                        startTime = sessionStartMs,
+                        endTime = System.currentTimeMillis(),
+                        chaptersVisited = visitedChapters.size.coerceAtLeast(1)
+                    )
+                )
+            }
+        }
     }
 }

@@ -40,7 +40,7 @@ import com.ebooks.reader.viewmodel.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
-    onOpenBook: (String) -> Unit,
+    onOpenBook: (bookId: String, fileType: String) -> Unit,
     viewModel: LibraryViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -48,6 +48,9 @@ fun LibraryScreen(
     var showSortSheet by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showMenuFor by remember { mutableStateOf<Book?>(null) }
+    var showStatsFor by remember { mutableStateOf<Book?>(null) }
+    var showSettingsMenu by remember { mutableStateOf(false) }
+    var isRebuildingCovers by remember { mutableStateOf(false) }
     var searchActive by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(
@@ -68,6 +71,7 @@ fun LibraryScreen(
                 onSearchClose = { searchActive = false; viewModel.setSearchQuery("") },
                 onSort = { showSortSheet = true },
                 onFilter = { showFilterSheet = true },
+                onSettings = { showSettingsMenu = true },
                 onViewModeToggle = {
                     viewModel.setViewMode(
                         when (uiState.viewMode) {
@@ -118,7 +122,7 @@ fun LibraryScreen(
                                 items(uiState.books, key = { it.id }) { book ->
                                     BookGridCard(
                                         book = book,
-                                        onClick = { onOpenBook(book.id) },
+                                        onClick = { onOpenBook(book.id, book.fileType) },
                                         onLongClick = { showMenuFor = book }
                                     )
                                 }
@@ -132,7 +136,7 @@ fun LibraryScreen(
                                 items(uiState.books, key = { it.id }) { book ->
                                     BookListItem(
                                         book = book,
-                                        onClick = { onOpenBook(book.id) },
+                                        onClick = { onOpenBook(book.id, book.fileType) },
                                         onLongClick = { showMenuFor = book }
                                     )
                                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -182,9 +186,30 @@ fun LibraryScreen(
         BookContextMenu(
             book = book,
             onDismiss = { showMenuFor = null },
-            onOpen = { onOpenBook(book.id); showMenuFor = null },
+            onOpen = { onOpenBook(book.id, book.fileType); showMenuFor = null },
             onMarkStatus = { status -> viewModel.updateReadingStatus(book.id, status); showMenuFor = null },
+            onStats = { showStatsFor = book; showMenuFor = null },
             onDelete = { viewModel.deleteBook(book); showMenuFor = null }
+        )
+    }
+
+    showStatsFor?.let { book ->
+        ReadingStatsDialog(
+            book = book,
+            viewModel = viewModel,
+            onDismiss = { showStatsFor = null }
+        )
+    }
+
+    if (showSettingsMenu) {
+        SettingsDialog(
+            isRebuildingCovers = isRebuildingCovers,
+            onRebuildCovers = {
+                isRebuildingCovers = true
+                viewModel.rebuildCovers()
+                isRebuildingCovers = false
+            },
+            onDismiss = { showSettingsMenu = false }
         )
     }
 }
@@ -200,6 +225,7 @@ private fun LibraryTopBar(
     onSearchClose: () -> Unit,
     onSort: () -> Unit,
     onFilter: () -> Unit,
+    onSettings: () -> Unit,
     onViewModeToggle: () -> Unit,
     scrollBehavior: TopAppBarScrollBehavior
 ) {
@@ -244,6 +270,7 @@ private fun LibraryTopBar(
                         }, "Change view"
                     )
                 }
+                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
             },
             scrollBehavior = scrollBehavior
         )
@@ -301,7 +328,14 @@ private fun FilterSheet(
 }
 
 @Composable
-private fun BookContextMenu(book: Book, onDismiss: () -> Unit, onOpen: () -> Unit, onMarkStatus: (ReadingStatus) -> Unit, onDelete: () -> Unit) {
+private fun BookContextMenu(
+    book: Book,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit,
+    onMarkStatus: (ReadingStatus) -> Unit,
+    onStats: () -> Unit,
+    onDelete: () -> Unit
+) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -309,6 +343,7 @@ private fun BookContextMenu(book: Book, onDismiss: () -> Unit, onOpen: () -> Uni
         text = {
             Column {
                 ListItem(headlineContent = { Text("Open") }, leadingContent = { Icon(Icons.Default.MenuBook, null) }, modifier = Modifier.clickable(onClick = onOpen))
+                ListItem(headlineContent = { Text("Reading Stats") }, leadingContent = { Icon(Icons.Default.Timer, null) }, modifier = Modifier.clickable(onClick = onStats))
                 HorizontalDivider()
                 Text("Mark as:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -331,6 +366,114 @@ private fun BookContextMenu(book: Book, onDismiss: () -> Unit, onOpen: () -> Uni
             dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") } }
         )
     }
+}
+
+@Composable
+private fun ReadingStatsDialog(
+    book: Book,
+    viewModel: LibraryViewModel,
+    onDismiss: () -> Unit
+) {
+    var stats by remember { mutableStateOf<com.ebooks.reader.data.repository.BookRepository.ReadingStats?>(null) }
+
+    LaunchedEffect(book.id) {
+        stats = viewModel.getReadingStats(book.id)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Timer, null) },
+        title = { Text(book.title, maxLines = 1) },
+        text = {
+            val s = stats
+            if (s == null) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatsRow("Total reading time", formatDuration(s.totalReadingTimeMs))
+                    StatsRow("Sessions", s.sessionCount.toString())
+                    if (s.sessionCount > 0) {
+                        StatsRow("Avg. session length", formatDuration(s.averageSessionMs))
+                        s.lastSessionMs?.let { StatsRow("Last session", formatDuration(it)) }
+                    }
+                    if (s.sessionCount == 0) {
+                        Text(
+                            "No reading sessions recorded yet.\nOpen the book to start tracking!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun StatsRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** Converts milliseconds to a human-readable string like "3h 24m" or "45m" or "< 1m". */
+private fun formatDuration(ms: Long): String {
+    if (ms <= 0L) return "< 1m"
+    val totalMinutes = ms / 60_000L
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        minutes > 0 -> "${minutes}m"
+        else -> "< 1m"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsDialog(
+    isRebuildingCovers: Boolean,
+    onRebuildCovers: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Library Settings") },
+        text = {
+            Column {
+                Text("Rebuild Cover Images", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Re-import cover images from all EPUB books in your library.", style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onRebuildCovers,
+                    enabled = !isRebuildingCovers,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isRebuildingCovers) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Rebuilding...")
+                    } else {
+                        Text("Rebuild Covers")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+    )
 }
 
 @Composable
