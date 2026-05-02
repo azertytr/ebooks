@@ -76,7 +76,32 @@ git clone https://github.com/BardinConsulting/ebooks.git
 cd ebooks
 ```
 
-### 2. Generate Gradle wrapper (first time only)
+### 2a. Build with Docker (Recommended)
+
+Build a release APK using Docker — works on any system with Docker installed.
+
+```bash
+# Debug APK
+./scripts/build-apk-docker.sh
+
+# Release APK with custom version
+./scripts/build-apk-docker.sh 1.2.3
+
+# Release APK with version and code
+./scripts/build-apk-docker.sh 1.2.3 42
+```
+
+The APK will be in `./release/`.
+
+**Advantages:**
+- ✅ No local Android SDK installation needed
+- ✅ Matches CI/CD environment exactly
+- ✅ Reproducible builds across machines
+- ✅ Clean isolation (no system contamination)
+
+### 2b. Build Locally (without Docker)
+
+#### Step 2b-i: Generate Gradle wrapper (first time only)
 
 ```bash
 # If you have Gradle 8.7 installed globally:
@@ -85,7 +110,7 @@ gradle wrapper
 # Or use Android Studio's "Sync Project" button
 ```
 
-### 3. Build
+#### Step 2b-ii: Build debug APK
 
 ```bash
 ./gradlew assembleDebug
@@ -93,9 +118,13 @@ gradle wrapper
 
 The APK will be at `app/build/outputs/apk/debug/app-debug.apk`.
 
-### 4. Install on device
+### 3. Install on device
 
 ```bash
+# From Docker build
+adb install ./release/EbookReader-v1.0.0.apk
+
+# From local build
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
