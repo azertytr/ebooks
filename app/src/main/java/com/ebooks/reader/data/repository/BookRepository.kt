@@ -12,6 +12,8 @@ import com.ebooks.reader.data.db.entities.FileType
 import com.ebooks.reader.data.db.entities.ReadingProgress
 import com.ebooks.reader.data.db.entities.ReadingSession
 import com.ebooks.reader.data.db.entities.ReadingStatus
+import com.ebooks.reader.data.parser.EpubBook
+import com.ebooks.reader.data.parser.EpubChapter
 import com.ebooks.reader.data.parser.EpubParser
 import com.ebooks.reader.data.parser.ReaderTheme
 import kotlinx.coroutines.Dispatchers
@@ -246,7 +248,7 @@ class BookRepository(private val context: Context) {
         withContext(Dispatchers.IO) {
             val book = dao.getBookById(bookId) ?: return@withContext null
             when (book.fileType) {
-                "txt", "fb2" -> {
+                FileType.TXT.extension, FileType.FB2.extension -> {
                     val uri = resolveUri(book.filePath)
                     val text = try {
                         context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
@@ -258,17 +260,17 @@ class BookRepository(private val context: Context) {
         }
 
     // Accept the already-fetched Book to avoid an extra DB round-trip
-    suspend fun parseEpubBook(book: Book): com.ebooks.reader.data.parser.EpubBook? =
+    suspend fun parseEpubBook(book: Book): EpubBook? =
         withContext(Dispatchers.IO) {
             when (book.fileType) {
-                "txt", "fb2" -> com.ebooks.reader.data.parser.EpubBook(
+                FileType.TXT.extension, FileType.FB2.extension -> EpubBook(
                     title = book.title,
                     author = book.author,
                     description = null,
                     publisher = null,
                     language = null,
                     coverBytes = null,
-                    chapters = listOf(com.ebooks.reader.data.parser.EpubChapter(0, book.title, "text://content"))
+                    chapters = listOf(EpubChapter(0, book.title, "text://content"))
                 )
                 else -> epubParser.parse(resolveUri(book.filePath))
             }
