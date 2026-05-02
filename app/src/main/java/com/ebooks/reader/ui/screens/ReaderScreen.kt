@@ -2,6 +2,10 @@ package com.ebooks.reader.ui.screens
 
 import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -51,19 +55,9 @@ fun ReaderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val activity = LocalActivity.current
-
-    // Orientation lock: apply per-book orientation preference and restore on exit
-    DisposableEffect(uiState.settings.orientationLock) {
-        activity?.requestedOrientation = when (uiState.settings.orientationLock) {
-            OrientationLock.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            OrientationLock.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            OrientationLock.UNSPECIFIED -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
-        onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
-    }
+    val context = LocalContext.current
 
     // Auto-scroll: collect ticks from ViewModel and drive WebView scrolling
     LaunchedEffect(Unit) {
@@ -87,10 +81,9 @@ fun ReaderScreen(
         activity?.requestedOrientation = when (uiState.settings.orientationLock) {
             OrientationLock.PORTRAIT   -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
             OrientationLock.LANDSCAPE  -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            OrientationLock.AUTO       -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            OrientationLock.UNSPECIFIED -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         onDispose {
-            // Restore auto-rotate when leaving the reader
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
