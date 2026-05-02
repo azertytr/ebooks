@@ -1,12 +1,7 @@
 package com.ebooks.reader.ui.screens
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.pm.ActivityInfo
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -56,9 +51,7 @@ fun ReaderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
-    val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
-    val activity = context as? Activity
+    val activity = LocalActivity.current
 
     // Orientation lock: apply per-book orientation preference and restore on exit
     DisposableEffect(uiState.settings.orientationLock) {
