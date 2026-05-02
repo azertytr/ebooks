@@ -76,7 +76,24 @@ git clone https://github.com/BardinConsulting/ebooks.git
 cd ebooks
 ```
 
-### 2a. Build with Docker (Recommended)
+### 2. Quick Start (One-Shot)
+
+Build and install APK automatically — no questions asked:
+
+```bash
+./setup.sh                 # Build v1.0.0, auto-install if device connected
+./setup.sh 1.2.3           # Build v1.2.3
+./setup.sh 1.2.3 42        # Build v1.2.3 with code=42
+```
+
+**What it does:**
+- ✅ Builds APK with Docker automatically
+- ✅ Downloads to `~/.ebooks-apk/` (persistent folder)
+- ✅ Auto-installs on connected Android device
+- ✅ Shows ready-to-install APK path
+- ✅ Zero interaction
+
+### 3a. Build with Docker (Manual Control)
 
 Build a release APK using Docker — works on any system with Docker installed.
 
@@ -99,9 +116,9 @@ The APK will be in `./release/`.
 - ✅ Reproducible builds across machines
 - ✅ Clean isolation (no system contamination)
 
-### 2b. Build Locally (without Docker)
+### 3b. Build Locally (without Docker)
 
-#### Step 2b-i: Generate Gradle wrapper (first time only)
+#### Step 3b-i: Generate Gradle wrapper (first time only)
 
 ```bash
 # If you have Gradle 8.7 installed globally:
@@ -110,7 +127,7 @@ gradle wrapper
 # Or use Android Studio's "Sync Project" button
 ```
 
-#### Step 2b-ii: Build debug APK
+#### Step 3b-ii: Build debug APK
 
 ```bash
 ./gradlew assembleDebug
@@ -118,9 +135,12 @@ gradle wrapper
 
 The APK will be at `app/build/outputs/apk/debug/app-debug.apk`.
 
-### 3. Install on device
+### 4. Install on Device (Manual)
 
 ```bash
+# From setup.sh
+adb install ~/.ebooks-apk/EbookReader-v1.0.0.apk
+
 # From Docker build
 adb install ./release/EbookReader-v1.0.0.apk
 
