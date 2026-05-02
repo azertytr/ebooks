@@ -61,6 +61,32 @@ fi
 echo "🐳 Building EbookReader APK ($VERSION_NAME)…"
 log_info "Docker build starting (this may take a few minutes)…"
 
+if ! command -v docker &> /dev/null; then
+    log_error "Docker is not installed"
+    echo ""
+    echo "📝 To use this script, install Docker from: https://www.docker.com/"
+    echo ""
+    echo "🔨 OR build locally without Docker:"
+    echo "   ./gradlew assembleDebug"
+    echo "   # APK: app/build/outputs/apk/debug/app-debug.apk"
+    echo ""
+    exit 1
+fi
+
+if ! docker ps &> /dev/null; then
+    log_error "Docker daemon is not running"
+    echo ""
+    echo "💡 Start Docker and try again:"
+    echo "   # On macOS/Windows: Open Docker Desktop"
+    echo "   # On Linux: sudo systemctl start docker"
+    echo ""
+    echo "🔨 OR build locally without Docker:"
+    echo "   ./gradlew assembleDebug"
+    echo "   # APK: app/build/outputs/apk/debug/app-debug.apk"
+    echo ""
+    exit 1
+fi
+
 if [ "$DEBUG" = "1" ]; then
     # Show full Docker output
     docker build \
