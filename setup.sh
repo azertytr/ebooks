@@ -1,123 +1,98 @@
-#!/usr/bin/env bash
-# setup.sh — prepare the EbookReader dev environment
-# Safe to run multiple times.
+#!/bin/bash
+# setup.sh — Build & download EbookReader APK (one-shot, no questions)
+#
+# Usage:
+#   ./setup.sh              # Build v1.0.0
+#   ./setup.sh 1.2.3        # Build v1.2.3
+#   ./setup.sh 1.2.3 42     # Build v1.2.3, code=42
+#
+
 set -euo pipefail
 
-# ── Colours ──────────────────────────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuration
+# ─────────────────────────────────────────────────────────────────────────────
 
-ok()   { echo -e "${GREEN}✔${RESET}  $*"; }
-info() { echo -e "${CYAN}→${RESET}  $*"; }
-warn() { echo -e "${YELLOW}⚠${RESET}  $*"; }
-die()  { echo -e "${RED}✖${RESET}  $*" >&2; exit 1; }
+VERSION_NAME="${1:-1.0.0}"
+VERSION_CODE="${2:-1}"
+OUTPUT_DIR="${HOME}/.ebooks-apk"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo -e "\n${BOLD}EbookReader — setup${RESET}\n"
-
-# ── 1. Java 17+ ──────────────────────────────────────────────────────────────
-info "Checking Java..."
-if ! command -v java &>/dev/null; then
-  die "Java not found. Install JDK 17: https://adoptium.net"
+# Ensure version name starts with 'v'
+if [[ ! "$VERSION_NAME" =~ ^v ]]; then
+    VERSION_NAME="v${VERSION_NAME}"
 fi
 
-JAVA_VER=$(java -version 2>&1 | awk -F '"' '/version/{print $2}' | cut -d. -f1)
-if [[ "$JAVA_VER" -lt 17 ]]; then
-  die "Java $JAVA_VER detected — JDK 17+ is required."
-fi
-ok "Java $JAVA_VER"
+# ─────────────────────────────────────────────────────────────────────────────
+# Setup
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ── 2. Android SDK ───────────────────────────────────────────────────────────
-info "Locating Android SDK..."
+mkdir -p "$OUTPUT_DIR"
+cd "$SCRIPT_DIR"
 
-SDK_CANDIDATES=(
-  "${ANDROID_HOME:-}"
-  "${ANDROID_SDK_ROOT:-}"
-  "$HOME/Android/Sdk"               # Linux (Android Studio default)
-  "$HOME/Library/Android/sdk"       # macOS
-  "/usr/local/lib/android/sdk"      # GitHub Actions ubuntu-latest
-)
+# ─────────────────────────────────────────────────────────────────────────────
+# Build
+# ─────────────────────────────────────────────────────────────────────────────
 
-ANDROID_SDK=""
-for candidate in "${SDK_CANDIDATES[@]}"; do
-  if [[ -n "$candidate" && -d "$candidate/platforms" ]]; then
-    ANDROID_SDK="$candidate"
-    break
-  fi
-done
+echo "🐳 Building EbookReader APK…"
+docker build \
+    --build-arg VERSION_CODE="$VERSION_CODE" \
+    --build-arg VERSION_NAME="$VERSION_NAME" \
+    -t ebook-reader:latest \
+    -f Dockerfile \
+    . > /dev/null 2>&1
 
-if [[ -z "$ANDROID_SDK" ]]; then
-  die "Android SDK not found. Install via Android Studio or set ANDROID_HOME."
-fi
-ok "Android SDK at $ANDROID_SDK"
+# ─────────────────────────────────────────────────────────────────────────────
+# Extract
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ── 3. local.properties ──────────────────────────────────────────────────────
-if [[ ! -f local.properties ]]; then
-  info "Creating local.properties..."
-  echo "sdk.dir=$ANDROID_SDK" > local.properties
-  ok "local.properties created"
-else
-  # Ensure sdk.dir is set (update if pointing somewhere wrong)
-  if ! grep -q "^sdk.dir=" local.properties; then
-    echo "sdk.dir=$ANDROID_SDK" >> local.properties
-    ok "sdk.dir added to existing local.properties"
-  else
-    ok "local.properties already present"
-  fi
+TEMP_CONTAINER=$(docker run -d ebook-reader:latest sleep 999)
+trap "docker rm -f $TEMP_CONTAINER > /dev/null 2>&1" EXIT
+
+docker cp "$TEMP_CONTAINER":/out/. "$OUTPUT_DIR/" 2>/dev/null || true
+docker rm -f "$TEMP_CONTAINER" > /dev/null 2>&1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Verify & Report
+# ─────────────────────────────────────────────────────────────────────────────
+
+APK_FILE=$(find "$OUTPUT_DIR" -name "*.apk" -type f -print -quit 2>/dev/null || echo "")
+
+if [ -z "$APK_FILE" ]; then
+    echo "❌ Build failed — APK not found"
+    exit 1
 fi
 
-# ── 4. Gradle wrapper ────────────────────────────────────────────────────────
-info "Checking Gradle wrapper..."
+# ─────────────────────────────────────────────────────────────────────────────
+# Install
+# ─────────────────────────────────────────────────────────────────────────────
 
-if [[ ! -f gradle/wrapper/gradle-wrapper.jar ]]; then
-  die "gradle/wrapper/gradle-wrapper.jar is missing. Run: gradle wrapper --gradle-version 8.7"
-fi
-ok "gradle-wrapper.jar present"
+# Check if device is connected
+DEVICES=$(adb devices 2>/dev/null | grep -v "List" | grep "device$" | wc -l || echo "0")
 
-chmod +x gradlew
-ok "gradlew is executable"
-
-# ── 5. SDK platform 34 ───────────────────────────────────────────────────────
-info "Checking Android platform 34..."
-PLATFORM_DIR="$ANDROID_SDK/platforms/android-34"
-if [[ ! -d "$PLATFORM_DIR" ]]; then
-  warn "Platform 34 not found at $PLATFORM_DIR"
-  warn "Install it via Android Studio SDK Manager or:"
-  warn "  \$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager \"platforms;android-34\""
-else
-  ok "Platform 34 found"
+if [ "$DEVICES" -gt 0 ]; then
+    echo "📱 Android device detected — installing…"
+    adb install -r "$APK_FILE" > /dev/null 2>&1 && \
+        echo "✅ Installed on device" || \
+        echo "⚠️  Install failed (check device)"
 fi
 
-# ── 6. Build (optional — skip with NO_BUILD=1) ───────────────────────────────
-if [[ "${NO_BUILD:-0}" != "1" ]]; then
-  echo ""
-  info "Building debug APK (set NO_BUILD=1 to skip)..."
-  ./gradlew assembleDebug --no-daemon --quiet
-  APK="app/build/outputs/apk/debug/app-debug.apk"
-  if [[ -f "$APK" ]]; then
-    SIZE=$(du -sh "$APK" | cut -f1)
-    ok "Debug APK built — $APK ($SIZE)"
-  else
-    die "Build succeeded but APK not found at expected path."
-  fi
-fi
+# ─────────────────────────────────────────────────────────────────────────────
+# Summary
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ── 7. ADB device check (informational) ──────────────────────────────────────
+APK_SIZE=$(du -h "$APK_FILE" | cut -f1)
+APK_NAME=$(basename "$APK_FILE")
+
 echo ""
-if command -v adb &>/dev/null; then
-  DEVICES=$(adb devices 2>/dev/null | grep -v "^List" | grep -c "device$" || true)
-  if [[ "$DEVICES" -gt 0 ]]; then
-    ok "$DEVICES device(s) connected — install with: adb install $APK"
-  else
-    info "No ADB devices connected. Connect a device or start an emulator."
-  fi
-else
-  info "adb not in PATH — skipping device check."
-fi
-
-# ── Done ─────────────────────────────────────────────────────────────────────
+echo "✅ Build complete"
 echo ""
-echo -e "${BOLD}${GREEN}Setup complete.${RESET}"
-echo -e "  Build:  ${CYAN}./gradlew assembleDebug${RESET}"
-echo -e "  Test:   ${CYAN}./gradlew test${RESET}"
-echo -e "  Lint:   ${CYAN}./gradlew lint${RESET}"
+echo "📦 APK: $APK_NAME ($APK_SIZE)"
+echo "📂 Path: $APK_FILE"
+echo "💾 Folder: $OUTPUT_DIR"
 echo ""
+echo "📲 To install manually:"
+echo "   adb install \"$APK_FILE\""
+echo ""
+echo "🔗 Or copy to phone via:"
+echo "   file://$APK_FILE"
