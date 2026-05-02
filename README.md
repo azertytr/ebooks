@@ -93,6 +93,14 @@ Build and install APK automatically — no questions asked:
 - ✅ Shows ready-to-install APK path
 - ✅ Zero interaction
 
+**Debugging (if APK not found):**
+
+```bash
+DEBUG=1 ./setup.sh 1.2.3   # Show full Docker build output & timestamps
+```
+
+Shows detailed progress with timestamps, full Docker output, and file listing if build fails.
+
 ### 3a. Build with Docker (Manual Control)
 
 Build a release APK using Docker — works on any system with Docker installed.
